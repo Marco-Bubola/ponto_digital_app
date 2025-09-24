@@ -366,7 +366,7 @@ class _PeriodChip extends StatelessWidget {
           onSelected(this.value);
         }
       },
-      selectedColor: Color(AppColors.primaryBlue).withOpacity(0.2),
+      selectedColor: Color(AppColors.primaryBlue).withValues(alpha: 0.2),
       checkmarkColor: Color(AppColors.primaryBlue),
     );
   }
@@ -405,7 +405,7 @@ class _SummaryCard extends StatelessWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
