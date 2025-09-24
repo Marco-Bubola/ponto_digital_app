@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:intl/intl.dart';
+import '../../services/device_service.dart';
 import '../../utils/constants.dart';
+import '../../services/session_service.dart';
 
 class TimecardScreen extends StatefulWidget {
   const TimecardScreen({super.key});
@@ -13,21 +18,80 @@ class _TimecardScreenState extends State<TimecardScreen> {
   bool _isRecording = false;
   String _currentTime = '';
   String _currentLocation = 'Carregando localização...';
+  // Dados reais do usuário (fallbacks)
+  String _lastRecordTitle = 'Nenhum registro';
+  String _lastRecordSubtitle = '';
+  String _lastRecordStatus = 'Pendente';
+  List<Map<String, dynamic>> _records = [];
+  bool _isLoadingRecords = false;
+  String? _recordsError;
 
   @override
   void initState() {
     super.initState();
     _updateTime();
     _getCurrentLocation();
+    _loadSessionData();
+    _fetchTimeRecords();
     // Atualizar o tempo a cada segundo
     Future.delayed(const Duration(seconds: 1), _updateTime);
+  }
+
+  Future<void> _fetchTimeRecords() async {
+    setState(() {
+      _isLoadingRecords = true;
+      _recordsError = null;
+    });
+
+    try {
+      final token = await SessionService.getToken();
+      final deviceId = await DeviceService.getDeviceId();
+      final uri = Uri.parse('http://localhost:3000/api/time-records');
+      final resp = await http.get(uri, headers: {
+        if (token != null) 'Authorization': 'Bearer $token',
+        'X-Device-ID': deviceId,
+      });
+
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        final recs = (body['records'] as List<dynamic>?) ?? [];
+          if (mounted) {
+            setState(() {
+            _records = recs.map((r) => Map<String, dynamic>.from(r as Map)).toList();
+            if (_records.isNotEmpty) {
+              final first = _records.first;
+              final entry = first['type'] ?? '—';
+              final timeRaw = first['timestamp'] ?? first['createdAt'] ?? '';
+              String time = timeRaw.toString();
+              try {
+                final dt = DateTime.parse(timeRaw.toString());
+                time = DateFormat('HH:mm', 'pt_BR').format(dt);
+              } catch (_) {}
+              _lastRecordTitle = entry.toString();
+              _lastRecordSubtitle = time;
+              _lastRecordStatus = first['overallStatus'] ?? _lastRecordStatus;
+            }
+          });
+          }
+      } else {
+        setState(() {
+          _recordsError = 'Erro ao buscar registros: ${resp.statusCode}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _recordsError = 'Falha de conexão';
+      });
+    } finally {
+      if (mounted) setState(() => _isLoadingRecords = false);
+    }
   }
 
   void _updateTime() {
     if (mounted) {
       setState(() {
         final now = DateTime.now();
-        _currentTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+        _currentTime = DateFormat('HH:mm:ss', 'pt_BR').format(now);
       });
       Future.delayed(const Duration(seconds: 1), _updateTime);
     }
@@ -38,19 +102,90 @@ class _TimecardScreenState extends State<TimecardScreen> {
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         setState(() {
-          _currentLocation = 'Escritório Central - São Paulo, SP';
+            _currentLocation = 'Escritório Central - São Paulo, SP';
+            // se o usuário na sessão tiver localização preferida, usar
+            // (será sobrescrito depois se houver dados reais)
         });
       }
     });
   }
 
+
+  Future<void> _loadSessionData() async {
+    try {
+      final user = await SessionService.getUser();
+      if (user == null) return;
+
+      // Localização preferencial do usuário
+      if (user['preferredLocation'] != null) {
+        final loc = user['preferredLocation'];
+        if (loc is String && loc.isNotEmpty) {
+          if (mounted) setState(() => _currentLocation = loc);
+        } else if (loc is Map) {
+          final locStr = '${loc['name'] ?? ''} ${loc['city'] ?? ''}'.trim();
+          if (locStr.isNotEmpty && mounted) setState(() => _currentLocation = locStr);
+        }
+      }
+
+      // Hoje
+      final today = user['today'];
+      if (today != null && today is Map) {
+        final entry = today['entryTime'] as String?;
+        final exit = today['exitTime'] as String?;
+        if (entry != null && entry.isNotEmpty) {
+          if (mounted) {
+            setState(() => _lastRecordTitle = 'Entrada - $entry');
+          }
+        }
+        if (exit != null && exit.isNotEmpty) {
+          if (mounted) {
+            setState(() => _lastRecordTitle = _lastRecordTitle.startsWith('Entrada') ? _lastRecordTitle : 'Saída - $exit');
+          }
+        }
+        final loc = today['location'] as String?;
+        if (loc != null && loc.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _lastRecordSubtitle = 'Hoje - $loc';
+            });
+          }
+        }
+        final confirmed = today['confirmed'];
+        if (confirmed != null) {
+          if (mounted) {
+            setState(() {
+              _lastRecordStatus = confirmed == true ? 'Confirmado' : 'Pendente';
+            });
+          }
+        }
+      }
+
+      // Registros recentes
+      final recs = user['recentRecords'];
+      if (recs == null || (recs is List && recs.isEmpty)) {
+        if (mounted) {
+          // fallback: usar dados estáticos já definidos
+        }
+      } else if (recs is List && recs.isNotEmpty) {
+        final r = recs.first;
+        final date = r['date'] ?? '—';
+        final entry = r['entry'] ?? '--:--';
+        if (mounted) {
+          setState(() {
+          _lastRecordTitle = 'Entrada - $entry';
+          _lastRecordSubtitle = '$date - ${r['location'] ?? _currentLocation}';
+          _lastRecordStatus = (r['confirmed'] == true) ? 'Confirmado' : 'Pendente';
+        });
+        }
+      }
+    } catch (e) {
+      // ignore errors, manter fallback
+    }
+  }
   String _getFormattedDate() {
     final now = DateTime.now();
-    final weekdays = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-    final months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 
-                   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    
-    return '${weekdays[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}';
+    final df = DateFormat("EEEE, d 'de' MMMM", 'pt_BR');
+    return toBeginningOfSentenceCase(df.format(now)) ?? df.format(now);
   }
 
   Future<void> _recordTimecard(TimeRecordType type) async {
@@ -60,8 +195,87 @@ class _TimecardScreenState extends State<TimecardScreen> {
     });
 
     try {
-      // Simular processo de validação (Face + GPS + Device)
-      await Future.delayed(const Duration(seconds: 3));
+      // Obter token
+      final token = await SessionService.getToken();
+
+      // Simular obtenção de localização e face
+      await Future.delayed(const Duration(seconds: 1));
+      final latitude = -23.55052;
+      final longitude = -46.633308;
+
+      // Chamar endpoint backend
+      final deviceId = await DeviceService.getDeviceId();
+      final uri = Uri.parse('http://localhost:3000/api/time-records');
+      var resp = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+          'X-Device-ID': deviceId,
+          'X-Device-Name': 'FlutterApp',
+          'X-Platform': 'flutter',
+          'X-App-Version': '1.0.0'
+        },
+        body: json.encode({
+          'type': type.name,
+          'latitude': latitude,
+          'longitude': longitude,
+          'faceImageUrl': null,
+        }),
+      );
+
+      if (resp.statusCode == 401) {
+        // Possível dispositivo não autorizado -> tentar autorizar e reenviar
+        final body = resp.body;
+        if (body.contains('Dispositivo não autorizado') || body.contains('ID do dispositivo necessário')) {
+          final deviceId = await DeviceService.getDeviceId();
+          final authUri = Uri.parse('http://localhost:3000/api/users/devices');
+          final authResp = await http.post(
+            authUri,
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token'
+            },
+            body: json.encode({ 'deviceId': deviceId, 'deviceName': 'FlutterApp' })
+          );
+
+          if (authResp.statusCode == 201 || authResp.statusCode == 200) {
+            // reenviar o registro uma vez
+            final retryResp = await http.post(
+              uri,
+              headers: {
+                'Content-Type': 'application/json',
+                if (token != null) 'Authorization': 'Bearer $token',
+                'X-Device-ID': deviceId,
+                'X-Device-Name': 'FlutterApp',
+                'X-Platform': 'flutter',
+                'X-App-Version': '1.0.0'
+              },
+              body: json.encode({
+                'type': type.name,
+                'latitude': latitude,
+                'longitude': longitude,
+                'faceImageUrl': null,
+              }),
+            );
+
+            if (retryResp.statusCode != 201 && retryResp.statusCode != 200) {
+              throw Exception('Erro backend após autorizar dispositivo: ${retryResp.statusCode} ${retryResp.body}');
+            }
+            // usar a resposta do retry como resposta final
+            resp = retryResp;
+
+          } else {
+            throw Exception('Falha ao autorizar dispositivo: ${authResp.statusCode} ${authResp.body}');
+          }
+        } else {
+          throw Exception('Erro backend: ${resp.statusCode} ${resp.body}');
+        }
+      } else if (resp.statusCode != 201 && resp.statusCode != 200) {
+        throw Exception('Erro backend: ${resp.statusCode} ${resp.body}');
+      }
+
+  json.decode(resp.body);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -84,6 +298,19 @@ class _TimecardScreenState extends State<TimecardScreen> {
             ),
           ),
         );
+
+        // Atualizar estado local com novo registro mínimo
+        if (mounted) {
+          // Recarregar registros reais do backend para refletir alteração
+          await _fetchTimeRecords();
+        }
+        setState(() {
+          final now = DateTime.now();
+          final ts = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+          _lastRecordTitle = '${_getTypeDisplayName(type)} - $ts';
+          _lastRecordSubtitle = 'Agora - $_currentLocation';
+          _lastRecordStatus = 'Confirmado';
+        });
       }
     } catch (error) {
       if (mounted) {
@@ -160,6 +387,73 @@ class _TimecardScreenState extends State<TimecardScreen> {
     }
   }
 
+  // Retorna apenas os registros do dia atual (comparando year, month, day)
+  List<Map<String, dynamic>> _recordsToday() {
+    final today = DateTime.now();
+    return _records.where((r) {
+      final ts = r['timestamp'] ?? r['createdAt'];
+      if (ts == null) return false;
+      try {
+        final dt = DateTime.parse(ts.toString()).toLocal();
+        return dt.year == today.year && dt.month == today.month && dt.day == today.day;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+  }
+
+  bool _isButtonEnabled(TimeRecordType type) {
+    // Se já houve saída, nada mais deve ser registrado hoje
+    final todayRecords = _recordsToday();
+    final hasEntrada = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'entrada');
+    final hasPausa = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'pausa');
+    final hasRetorno = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'retorno');
+    final hasSaida = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'saida');
+
+    if (_isRecording) return false;
+    if (hasSaida) return false;
+
+    switch (type) {
+      case TimeRecordType.entrada:
+        // Só pode registrar entrada se não houver entrada hoje
+        return !hasEntrada;
+      case TimeRecordType.pausa:
+        // Pausa só se houver entrada e ainda não houver pausa
+        return hasEntrada && !hasPausa;
+      case TimeRecordType.retorno:
+        // Retorno só se já houve pausa e ainda não houve retorno
+        return hasPausa && !hasRetorno;
+      case TimeRecordType.saida:
+        // Saída se já houve entrada e ainda não houve saída
+        return hasEntrada && !hasSaida;
+    }
+  }
+
+  String _disabledReason(TimeRecordType type) {
+    final todayRecords = _recordsToday();
+    final hasEntrada = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'entrada');
+    final hasPausa = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'pausa');
+    final hasRetorno = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'retorno');
+    final hasSaida = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'saida');
+
+    if (_isRecording) return 'Já está registrando...';
+    if (hasSaida) return 'Jornada finalizada (saída registrada)';
+
+    switch (type) {
+      case TimeRecordType.entrada:
+        return hasEntrada ? 'Entrada já registrada' : 'Registrar entrada';
+      case TimeRecordType.pausa:
+        if (!hasEntrada) return 'Registre a entrada primeiro';
+        return hasPausa ? 'Pausa já registrada' : 'Registrar pausa';
+      case TimeRecordType.retorno:
+        if (!hasPausa) return 'Nenhuma pausa registrada';
+        return hasRetorno ? 'Retorno já registrado' : 'Registrar retorno';
+      case TimeRecordType.saida:
+        if (!hasEntrada) return 'Registre a entrada primeiro';
+        return hasSaida ? 'Saída já registrada' : 'Registrar saída';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,7 +463,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(AppColors.primaryBlue).withOpacity(0.1),
+              Color(AppColors.primaryBlue).withValues(alpha: 0.1),
               Colors.white,
             ],
           ),
@@ -179,6 +473,37 @@ class _TimecardScreenState extends State<TimecardScreen> {
             padding: const EdgeInsets.all(20.0),
             child: Column(
               children: [
+                // Refresh / estado
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (_isLoadingRecords) const Padding(
+                      padding: EdgeInsets.only(right: 8.0),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _isLoadingRecords ? null : () async => await _fetchTimeRecords(),
+                    ),
+                  ],
+                ),
+                if (_recordsError != null)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Color(AppColors.errorRed).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(_recordsError!, style: TextStyle(color: Color(AppColors.errorRed))),
+                  ),
+                // ...existing code...
+                
                 // Header moderno
                 Container(
                   width: double.infinity,
@@ -195,7 +520,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Color(AppColors.primaryBlue).withOpacity(0.3),
+                        color: Color(AppColors.primaryBlue).withValues(alpha: 0.3),
                         spreadRadius: 2,
                         blurRadius: 20,
                         offset: const Offset(0, 8),
@@ -209,7 +534,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: const Icon(
@@ -233,7 +558,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                               Text(
                                 _getFormattedDate(),
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.8),
+                                  color: Colors.white.withValues(alpha: 0.8),
                                   fontSize: 14,
                                 ),
                               ),
@@ -247,10 +572,10 @@ class _TimecardScreenState extends State<TimecardScreen> {
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.3),
+                            color: Colors.white.withValues(alpha: 0.3),
                             width: 1,
                           ),
                         ),
@@ -259,7 +584,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                             Text(
                               'Horário Atual',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                                 fontSize: 16,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -290,7 +615,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
+                        color: Colors.grey.withValues(alpha: 0.1),
                         spreadRadius: 1,
                         blurRadius: 10,
                         offset: const Offset(0, 2),
@@ -302,7 +627,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Color(AppColors.successGreen).withOpacity(0.1),
+                          color: Color(AppColors.successGreen).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
@@ -351,13 +676,13 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Color(AppColors.warningYellow).withOpacity(0.1),
+                          Color(AppColors.warningYellow).withValues(alpha: 0.1),
                           Colors.white,
                         ],
                       ),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Color(AppColors.warningYellow).withOpacity(0.3),
+                        color: Color(AppColors.warningYellow).withValues(alpha: 0.3),
                         width: 1,
                       ),
                     ),
@@ -366,7 +691,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Color(AppColors.primaryBlue).withOpacity(0.1),
+                            color: Color(AppColors.primaryBlue).withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
                           child: CircularProgressIndicator(
@@ -417,21 +742,28 @@ class _TimecardScreenState extends State<TimecardScreen> {
                 ),
                 const SizedBox(height: 20),
                 
-                // Botões de ação modernos em linha única
+                // Botões de ação modernos em linha única com validações de fluxo
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: TimeRecordType.values.map((type) {
+                    final enabled = _isButtonEnabled(type);
                     return Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                        child: _ModernTimecardButton(
-                          type: type,
-                          emoji: _getTypeEmoji(type),
-                          icon: _getTypeIcon(type),
-                          label: _getTypeDisplayName(type),
-                          color: _getTypeColor(type),
-                          isEnabled: !_isRecording,
-                          onPressed: () => _recordTimecard(type),
+                        child: Tooltip(
+                          message: enabled ? _getTypeDisplayName(type) : _disabledReason(type),
+                          child: Opacity(
+                            opacity: enabled ? 1.0 : 0.45,
+                            child: _ModernTimecardButton(
+                              type: type,
+                              emoji: _getTypeEmoji(type),
+                              icon: _getTypeIcon(type),
+                              label: _getTypeDisplayName(type),
+                              color: _getTypeColor(type),
+                              isEnabled: enabled,
+                              onPressed: enabled ? () => _recordTimecard(type) : null,
+                            ),
+                          ),
                         ),
                       ),
                     );
@@ -454,7 +786,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
+                        color: Colors.grey.withValues(alpha: 0.1),
                         spreadRadius: 1,
                         blurRadius: 10,
                         offset: const Offset(0, 2),
@@ -486,7 +818,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Color(AppColors.successGreen).withOpacity(0.1),
+                              color: Color(AppColors.successGreen).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Icon(
@@ -500,16 +832,16 @@ class _TimecardScreenState extends State<TimecardScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Entrada - 08:00',
-                                  style: TextStyle(
+                                Text(
+                                  _lastRecordTitle,
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Hoje - Escritório Central',
+                                  _lastRecordSubtitle.isNotEmpty ? _lastRecordSubtitle : 'Hoje - $_currentLocation',
                                   style: TextStyle(
                                     color: Colors.grey[600],
                                     fontSize: 14,
@@ -521,11 +853,11 @@ class _TimecardScreenState extends State<TimecardScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: Color(AppColors.successGreen).withOpacity(0.1),
+                              color: Color(AppColors.successGreen).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              'Confirmado',
+                              _lastRecordStatus,
                               style: TextStyle(
                                 color: Color(AppColors.successGreen),
                                 fontSize: 12,
@@ -555,7 +887,7 @@ class _ModernTimecardButton extends StatelessWidget {
   final String label;
   final Color color;
   final bool isEnabled;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   const _ModernTimecardButton({
     required this.type,
@@ -563,8 +895,8 @@ class _ModernTimecardButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.color,
-    required this.isEnabled,
-    required this.onPressed,
+  required this.isEnabled,
+  this.onPressed,
   });
 
   @override
@@ -577,7 +909,7 @@ class _ModernTimecardButton extends StatelessWidget {
                 end: Alignment.bottomRight,
                 colors: [
                   color,
-                  color.withOpacity(0.8),
+                  color.withValues(alpha: 0.8),
                 ],
               )
             : LinearGradient(
@@ -587,7 +919,7 @@ class _ModernTimecardButton extends StatelessWidget {
         boxShadow: isEnabled
             ? [
                 BoxShadow(
-                  color: color.withOpacity(0.3),
+                  color: color.withValues(alpha: 0.3),
                   spreadRadius: 1,
                   blurRadius: 8,
                   offset: const Offset(0, 4),
@@ -633,3 +965,4 @@ class _ModernTimecardButton extends StatelessWidget {
     );
   }
 }
+
