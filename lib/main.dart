@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'theme.dart';
 import 'views/auth/login_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Inicializar dados de localização para pt_BR
+  await initializeDateFormatting('pt_BR', null);
+  
   runApp(const PontoDigitalApp());
 }
 
@@ -19,3 +25,4 @@ class PontoDigitalApp extends StatelessWidget {
     );
   }
 }
+
