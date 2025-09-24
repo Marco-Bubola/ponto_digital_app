@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../dashboard/dashboard_screen.dart';
+import 'register_screen.dart';
 import '../../utils/constants.dart';
+import '../../services/session_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -31,19 +35,50 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Simular login por enquanto
-      await Future.delayed(const Duration(seconds: 2));
-      
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const DashboardScreen()),
-        );
+  final url = Uri.parse('http://127.0.0.1:3000/api/auth/login');
+      final body = {
+        'email': _emailController.text.trim(),
+        'password': _passwordController.text,
+        'deviceId': 'web-device-001',
+        'deviceName': 'Flutter Web'
+      };
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+
+        // Salvar token e usuário na sessão
+        final token = responseData['token'];
+        final user = responseData['user'];
+        if (token != null) await SessionService.saveToken(token);
+        if (user != null) await SessionService.saveUser(user);
+
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const DashboardScreen()),
+          );
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorData['error'] ?? 'Erro no login'),
+              backgroundColor: Color(AppColors.errorRed),
+            ),
+          );
+        }
       }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro no login: $error'),
+            content: Text('Erro de conexão: $error'),
             backgroundColor: Color(AppColors.errorRed),
           ),
         );
@@ -67,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
             end: Alignment.bottomRight,
             colors: [
               Color(AppColors.primaryBlue),
-              Color(AppColors.primaryBlue).withOpacity(0.8),
+              Color.fromARGB(204, (AppColors.primaryBlue >> 16) & 0xFF, (AppColors.primaryBlue >> 8) & 0xFF, AppColors.primaryBlue & 0xFF),
               Color(AppColors.secondaryTeal),
             ],
           ),
@@ -89,13 +124,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         end: Alignment.bottomRight,
                         colors: [
                           Colors.white,
-                          Colors.white.withOpacity(0.9),
+                          Color.fromARGB(230, 255, 255, 255),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(32),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Color.fromARGB(51, 0, 0, 0),
                           spreadRadius: 2,
                           blurRadius: 20,
                           offset: const Offset(0, 8),
@@ -123,7 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(
                     'Controle de jornada inteligente 🚀',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Color.fromARGB(230, 255, 255, 255),
                       fontSize: 16,
                     ),
                   ),
@@ -136,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Color.fromARGB(26, 0, 0, 0),
                           spreadRadius: 1,
                           blurRadius: 20,
                           offset: const Offset(0, 8),
@@ -261,7 +296,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Color(AppColors.primaryBlue).withOpacity(0.3),
+                                    color: Color.fromARGB(77, (AppColors.primaryBlue >> 16) & 0xFF, (AppColors.primaryBlue >> 8) & 0xFF, AppColors.primaryBlue & 0xFF),
                                     spreadRadius: 1,
                                     blurRadius: 8,
                                     offset: const Offset(0, 4),
@@ -311,7 +346,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             // Link esqueci a senha moderno
                             TextButton.icon(
                               onPressed: () {
-                                // TODO: Implementar esqueci a senha
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: const Row(
@@ -342,6 +376,28 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 8),
+                            TextButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const RegisterScreen(),
+                                  ),
+                                );
+                              },
+                              icon: Icon(
+                                Icons.person_add_rounded,
+                                color: Color(AppColors.primaryBlue),
+                                size: 20,
+                              ),
+                              label: Text(
+                                'Cadastre-se',
+                                style: TextStyle(
+                                  color: Color(AppColors.primaryBlue),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -354,7 +410,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Color.fromARGB(51, 255, 255, 255),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -362,14 +418,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         Icon(
                           Icons.info_outline_rounded,
-                          color: Colors.white.withOpacity(0.8),
+                          color: Color.fromARGB(204, 255, 255, 255),
                           size: 16,
                         ),
                         const SizedBox(width: 8),
                         Text(
                           'Versão ${AppConstants.appVersion}',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Color.fromARGB(204, 255, 255, 255),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
