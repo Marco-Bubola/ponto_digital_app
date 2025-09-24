@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../utils/constants.dart';
 import '../../widgets/common_widgets.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import '../../services/session_service.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -13,6 +16,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   DateTime _selectedDate = DateTime.now();
   List<TimeRecordItem> _records = [];
   bool _isLoading = false;
+  String? _error;
 
   @override
   void initState() {
@@ -23,43 +27,106 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> _loadRecords() async {
     setState(() {
       _isLoading = true;
+      _error = null;
     });
 
-    // Simular carregamento de dados
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (mounted) {
-      setState(() {
-        _records = _generateMockRecords();
-        _isLoading = false;
+    try {
+      final token = await SessionService.getToken();
+      final dateStr = '${_selectedDate.year.toString().padLeft(4, '0')}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+      final uri = Uri.parse('http://localhost:3000/api/time-records?date=$dateStr');
+      final resp = await http.get(uri, headers: {
+        if (token != null) 'Authorization': 'Bearer $token',
       });
+
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        final recs = (body['records'] as List<dynamic>?) ?? [];
+        final items = recs.map((r) {
+          final map = r as Map<String, dynamic>;
+          final ts = map['timestamp'] ?? map['createdAt'];
+          DateTime dt;
+          try {
+            dt = DateTime.parse(ts.toString()).toLocal();
+          } catch (_) {
+            dt = DateTime.now();
+          }
+          final typeStr = (map['type'] ?? map['entry'] ?? '').toString().toLowerCase();
+          TimeRecordType type = TimeRecordType.entrada;
+          if (typeStr.contains('pausa')) {
+            type = TimeRecordType.pausa;
+          } else if (typeStr.contains('retorno')) {
+            type = TimeRecordType.retorno;
+          } else if (typeStr.contains('saida') || typeStr.contains('saída')) {
+            type = TimeRecordType.saida;
+          }
+
+          final statusStr = (map['status'] ?? map['overallStatus'] ?? '').toString().toLowerCase();
+          RecordStatus status = RecordStatus.valid;
+          if (statusStr.contains('pending') || statusStr.contains('pend')) {
+            status = RecordStatus.pendingAdjustment;
+          } else if (statusStr.contains('invalid') || statusStr.contains('invál')) {
+            status = RecordStatus.invalid;
+          }
+
+          return TimeRecordItem(
+            type: type,
+            timestamp: dt,
+            status: status,
+            location: (map['location'] ?? map['place'] ?? '—').toString(),
+          );
+        }).toList();
+
+        if (mounted) {
+          setState(() {
+            _records = items;
+            _isLoading = false;
+          });
+        }
+      } else {
+        // fallback to mock on error
+        if (mounted) {
+              setState(() {
+                _records = _generateMockRecords(_selectedDate);
+            _isLoading = false;
+            _error = 'Erro ao buscar histórico: ${resp.statusCode}';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+              _records = _generateMockRecords(_selectedDate);
+          _isLoading = false;
+          _error = 'Falha de conexão';
+        });
+      }
     }
   }
 
-  List<TimeRecordItem> _generateMockRecords() {
-    final now = DateTime.now();
+  List<TimeRecordItem> _generateMockRecords([DateTime? forDate]) {
+    final d = forDate ?? DateTime.now();
     return [
       TimeRecordItem(
         type: TimeRecordType.entrada,
-        timestamp: DateTime(now.year, now.month, now.day, 8, 0),
+        timestamp: DateTime(d.year, d.month, d.day, 8, 0),
         status: RecordStatus.valid,
         location: 'Escritório Central',
       ),
       TimeRecordItem(
         type: TimeRecordType.pausa,
-        timestamp: DateTime(now.year, now.month, now.day, 12, 0),
+        timestamp: DateTime(d.year, d.month, d.day, 12, 0),
         status: RecordStatus.valid,
         location: 'Escritório Central',
       ),
       TimeRecordItem(
         type: TimeRecordType.retorno,
-        timestamp: DateTime(now.year, now.month, now.day, 13, 0),
+        timestamp: DateTime(d.year, d.month, d.day, 13, 0),
         status: RecordStatus.valid,
         location: 'Escritório Central',
       ),
       TimeRecordItem(
         type: TimeRecordType.saida,
-        timestamp: DateTime(now.year, now.month, now.day, 17, 30),
+        timestamp: DateTime(d.year, d.month, d.day, 17, 30),
         status: RecordStatus.pendingAdjustment,
         location: 'Escritório Central',
       ),
@@ -91,7 +158,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(AppColors.secondaryTeal).withOpacity(0.1),
+              Color(AppColors.secondaryTeal).withValues(alpha: 0.1),
               Colors.white,
             ],
           ),
@@ -115,7 +182,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Color(AppColors.secondaryTeal).withOpacity(0.3),
+                      color: Color(AppColors.secondaryTeal).withValues(alpha: 0.3),
                       spreadRadius: 2,
                       blurRadius: 20,
                       offset: const Offset(0, 8),
@@ -129,7 +196,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Icon(
@@ -163,7 +230,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: IconButton(
@@ -198,10 +265,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     // Seletor de data moderno
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           width: 1,
                         ),
                       ),
@@ -259,6 +326,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
 
               // Lista de registros
+              if (_error != null)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Color(AppColors.errorRed).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: Color(AppColors.errorRed)),
+                  ),
+                ),
+
               Expanded(
                 child: _isLoading
                     ? const LoadingIndicator(
@@ -365,7 +447,7 @@ class _ModernRecordCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withValues(alpha: 0.1),
             spreadRadius: 1,
             blurRadius: 8,
             offset: const Offset(0, 2),
@@ -383,7 +465,7 @@ class _ModernRecordCard extends StatelessWidget {
                 gradient: LinearGradient(
                   colors: [
                     _getStatusColor(record.status),
-                    _getStatusColor(record.status).withOpacity(0.7),
+                    _getStatusColor(record.status).withValues(alpha: 0.7),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(12),
@@ -451,10 +533,10 @@ class _ModernRecordCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: _getStatusColor(record.status).withOpacity(0.1),
+                color: _getStatusColor(record.status).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: _getStatusColor(record.status).withOpacity(0.3),
+                  color: _getStatusColor(record.status).withValues(alpha: 0.3),
                   width: 1,
                 ),
               ),
@@ -506,7 +588,7 @@ class _ModernDaySummary extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withValues(alpha: 0.1),
             spreadRadius: 1,
             blurRadius: 10,
             offset: const Offset(0, 2),
@@ -533,7 +615,7 @@ class _ModernDaySummary extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           Row(
             children: [
               Expanded(
@@ -544,7 +626,7 @@ class _ModernDaySummary extends StatelessWidget {
                   color: Color(AppColors.primaryBlue),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
                 child: _SummaryCard(
                   icon: Icons.coffee_rounded,
@@ -553,12 +635,7 @@ class _ModernDaySummary extends StatelessWidget {
                   color: Color(AppColors.warningYellow),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          
-          Row(
-            children: [
+              const SizedBox(width: 8),
               Expanded(
                 child: _SummaryCard(
                   icon: Icons.check_circle_rounded,
@@ -567,7 +644,7 @@ class _ModernDaySummary extends StatelessWidget {
                   color: Color(AppColors.successGreen),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
                 child: _SummaryCard(
                   icon: Icons.trending_up_rounded,
@@ -602,10 +679,10 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: color.withOpacity(0.2),
+          color: color.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
