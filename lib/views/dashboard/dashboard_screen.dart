@@ -5,6 +5,11 @@ import '../settings/settings_screen.dart';
 import '../adjustments/adjustments_screen.dart';
 import '../reports/reports_screen.dart';
 import '../../utils/constants.dart';
+import '../../services/session_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:intl/intl.dart';
+import '../../services/device_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -26,7 +31,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-   
+      appBar: AppBar(
+        title: const Text('Ponto Digital'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () {
+              // TODO: Implementar notificações
+            },
+          ),
+        ],
+      ),
       body: _pages[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
@@ -65,8 +80,192 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class DashboardContent extends StatelessWidget {
+class DashboardContent extends StatefulWidget {
   const DashboardContent({super.key});
+
+  @override
+  State<DashboardContent> createState() => _DashboardContentState();
+}
+
+class _DashboardContentState extends State<DashboardContent> {
+  String userName = 'Usuário';
+  String companyName = '';
+  // Campos dinâmicos do usuário (padrões quando não houver dados)
+  String entryTime = '--:--';
+  String exitTime = '--:--';
+  String entrySubtitle = 'Aguardando';
+  String exitSubtitle = 'Aguardando';
+
+  String weekHours = '0h 00m';
+  String daysPresent = '0/0';
+  String overtime = '0h 00m';
+  String balance = '+0h 00m';
+
+  List<Map<String, String>> recentRecords = [];
+  List<Map<String, dynamic>> _records = [];
+  bool _isLoading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSession();
+  }
+
+  Future<void> _loadSession() async {
+    try {
+      final user = await SessionService.getUser();
+      if (user != null) {
+        setState(() {
+          userName = user['name'] ?? 'Usuário';
+          companyName = (user['company'] != null && user['company']['name'] != null)
+              ? user['company']['name']
+              : '';
+          // Preencher dados dinâmicos se disponíveis
+          final stats = user['stats'];
+          if (stats != null && stats is Map) {
+            weekHours = stats['weekHours'] ?? weekHours;
+            daysPresent = stats['daysPresent']?.toString() ?? daysPresent;
+            overtime = stats['overtime'] ?? overtime;
+            balance = stats['balance'] ?? balance;
+          }
+
+          // Ponto do dia
+          final today = user['today'];
+          if (today != null && today is Map) {
+            entryTime = today['entryTime'] ?? entryTime;
+            exitTime = today['exitTime'] ?? exitTime;
+            entrySubtitle = today['entrySubtitle'] ?? entrySubtitle;
+            exitSubtitle = today['exitSubtitle'] ?? exitSubtitle;
+          }
+
+          // Registros recentes
+          final recs = user['recentRecords'];
+          if (recs != null && recs is List) {
+            recentRecords = recs.map<Map<String, String>>((r) {
+              try {
+                return {
+                  'date': r['date']?.toString() ?? '—',
+                  'entry': r['entry']?.toString() ?? '--:--',
+                  'exit': r['exit']?.toString() ?? '--:--',
+                  'total': r['total']?.toString() ?? '0h 00m',
+                };
+              } catch (e) {
+                return {'date': '—', 'entry': '--:--', 'exit': '--:--', 'total': '0h 00m'};
+              }
+            }).toList();
+          }
+        });
+      }
+    } catch (_) {}
+
+    // Buscar registros diretamente da API para garantir dados atualizados
+    await _fetchTimeRecords();
+  }
+
+  Future<void> _fetchTimeRecords() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final token = await SessionService.getToken();
+      final deviceId = await DeviceService.getDeviceId();
+      final uri = Uri.parse('http://localhost:3000/api/time-records');
+      final resp = await http.get(uri, headers: {
+        if (token != null) 'Authorization': 'Bearer $token',
+        'X-Device-ID': deviceId,
+      });
+
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        final recs = (body['records'] as List<dynamic>?) ?? [];
+        if (mounted) {
+          setState(() {
+            _records = recs.map((r) => Map<String, dynamic>.from(r as Map)).toList();
+
+            // Atualizar visualizações com base no registro mais recente
+            if (_records.isNotEmpty) {
+              final first = _records.first;
+              final ts = first['timestamp'] ?? first['createdAt'];
+              if (ts != null) {
+                try {
+                  final dt = DateTime.parse(ts.toString());
+                  entryTime = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+                } catch (_) {
+                  entryTime = ts.toString();
+                }
+              }
+
+              entrySubtitle = first['location'] is Map ? (first['location']['name'] ?? entrySubtitle) : (first['location']?.toString() ?? entrySubtitle);
+            }
+
+            // Mapear últimos registros para exibição (máx 5)
+            final dateFmt = DateFormat('dd/MM/yyyy', 'pt_BR');
+            final timeFmt = DateFormat('HH:mm', 'pt_BR');
+            recentRecords = _records.take(5).map<Map<String, String>>((r) {
+              String date = '—';
+              String entry = '--:--';
+              String exit = '--:--';
+              String total = '0h 00m';
+
+              final ts = r['timestamp'] ?? r['createdAt'];
+              if (ts != null) {
+                try {
+                  final dt = DateTime.parse(ts.toString());
+                  date = dateFmt.format(dt);
+                } catch (_) {
+                  date = ts.toString();
+                }
+              }
+
+              final type = r['type'] ?? r['action'] ?? '';
+              if (type != null && type.toString().isNotEmpty) {
+                entry = type.toString();
+              }
+
+              if (r['entryTime'] != null) {
+                try {
+                  final dt = DateTime.parse(r['entryTime'].toString());
+                  entry = timeFmt.format(dt);
+                } catch (_) {
+                  entry = r['entryTime'].toString();
+                }
+              }
+              if (r['exitTime'] != null) {
+                try {
+                  final dt = DateTime.parse(r['exitTime'].toString());
+                  exit = timeFmt.format(dt);
+                } catch (_) {
+                  exit = r['exitTime'].toString();
+                }
+              }
+              if (r['total'] != null) total = r['total'].toString();
+
+              return {
+                'date': date,
+                'entry': entry,
+                'exit': exit,
+                'total': total,
+              };
+            }).toList();
+          });
+        }
+      } else {
+        setState(() {
+          _error = 'Erro ao buscar registros: ${resp.statusCode}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Falha de conexão';
+      });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +280,7 @@ class DashboardContent extends StatelessWidget {
                 end: Alignment.bottomRight,
                 colors: [
                   Color(AppColors.primaryBlue),
-                  Color(AppColors.primaryBlue).withOpacity(0.8),
+                  Color.fromARGB(204, (AppColors.primaryBlue >> 16) & 0xFF, (AppColors.primaryBlue >> 8) & 0xFF, AppColors.primaryBlue & 0xFF),
                   Color(AppColors.secondaryTeal),
                 ],
               ),
@@ -102,7 +301,7 @@ class DashboardContent extends StatelessWidget {
                             gradient: LinearGradient(
                               colors: [
                                 Colors.white,
-                                Colors.white.withOpacity(0.8),
+                                Colors.white.withValues(alpha: 0.8),
                               ],
                             ),
                           ),
@@ -122,27 +321,57 @@ class DashboardContent extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Olá, João! 👋',
+                                'Olá, $userName 👋',
                                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                'Hoje é ${_getFormattedDate()}',
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 16,
-                                ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    companyName.isNotEmpty ? companyName : 'Ponto Digital',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Hoje é ${_getFormattedDate()}',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
                               ),
+                              const SizedBox(height: 4),
+                              // Refresh button & loading
+                              Row(
+                                children: [
+                                  if (_isLoading) const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  ),
+                                  IconButton(
+                                    onPressed: _isLoading ? null : () async => await _fetchTimeRecords(),
+                                    icon: const Icon(Icons.refresh, color: Colors.white),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ],
+                              ),
+                              
                             ],
                           ),
                         ),
                         // Notificações
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: IconButton(
@@ -157,28 +386,28 @@ class DashboardContent extends StatelessWidget {
                     ),
                     const SizedBox(height: 24),
                     
-                    // Status cards em linha
+                    // Status cards em linha (valores dinâmicos ou placeholders)
                     Row(
                       children: [
                         Expanded(
                           child: _ModernStatusCard(
                             title: 'Entrada',
-                            time: '08:00',
-                            subtitle: 'No horário',
+                            time: entryTime,
+                            subtitle: entrySubtitle,
                             icon: Icons.login_rounded,
                             color: Colors.green[400]!,
-                            isPositive: true,
+                            isPositive: entryTime != '--:--',
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: _ModernStatusCard(
                             title: 'Saída',
-                            time: '--:--',
-                            subtitle: 'Aguardando',
+                            time: exitTime,
+                            subtitle: exitSubtitle,
                             icon: Icons.logout_rounded,
                             color: Colors.orange[400]!,
-                            isPositive: false,
+                            isPositive: exitTime != '--:--',
                           ),
                         ),
                       ],
@@ -190,7 +419,7 @@ class DashboardContent extends StatelessWidget {
           ),
         ),
         
-        // Conteúdo principal
+        // Conteúdo principal com pull-to-refresh
         SliverToBoxAdapter(
           child: Transform.translate(
             offset: const Offset(0, -20),
@@ -203,257 +432,287 @@ class DashboardContent extends StatelessWidget {
               ),
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 10),
-                    
-                    // Seção de Ações Rápidas
-                    Row(
+                child: RefreshIndicator(
+                  onRefresh: _fetchTimeRecords,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.flash_on_rounded,
-                          color: Color(AppColors.primaryBlue),
-                          size: 28,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Ações Rápidas',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Alinhar os botões de ações rápidas na mesma linha
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        Expanded(
-                          child: _ModernActionCard(
-                            title: 'Registrar\nPonto',
-                            icon: Icons.fingerprint_rounded,
-                            gradient: LinearGradient(
-                              colors: [
-                                Color(AppColors.primaryBlue),
-                                Color(AppColors.primaryBlue).withOpacity(0.8),
+                        const SizedBox(height: 10),
+
+                        // Banner de erro
+                        if (_error != null)
+                          Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Color(AppColors.errorRed).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Color(AppColors.errorRed).withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.error_outline, color: Color(AppColors.errorRed), size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(_error!, style: TextStyle(color: Color(AppColors.errorRed)))),
+                                IconButton(
+                                  onPressed: () => setState(() => _error = null),
+                                  icon: Icon(Icons.close, color: Color(AppColors.errorRed), size: 18),
+                                ),
                               ],
                             ),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const TimecardScreen(),
-                                ),
-                              );
-                            },
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _ModernActionCard(
-                            title: 'Espelho\nDigital',
-                            icon: Icons.receipt_long_rounded,
-                            gradient: LinearGradient(
-                              colors: [
-                                Color(AppColors.successGreen),
-                                Color(AppColors.successGreen).withOpacity(0.8),
-                              ],
+
+                        // Seção de Ações Rápidas
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.flash_on_rounded,
+                              color: Color(AppColors.primaryBlue),
+                              size: 28,
                             ),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const HistoryScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _ModernActionCard(
-                            title: 'Solicitações',
-                            icon: Icons.edit_note_rounded,
-                            gradient: LinearGradient(
-                              colors: [
-                                Color(AppColors.warningYellow),
-                                Color(AppColors.warningYellow).withOpacity(0.8),
-                              ],
+                            const SizedBox(width: 8),
+                            Text(
+                              'Ações Rápidas',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const AdjustmentsScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _ModernActionCard(
-                            title: 'Relatórios',
-                            icon: Icons.analytics_rounded,
-                            gradient: LinearGradient(
-                              colors: [
-                                Color(AppColors.secondaryTeal),
-                                Color(AppColors.secondaryTeal).withOpacity(0.8),
-                              ],
-                            ),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const ReportsScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
-                    
-                    // Estatísticas da semana
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.bar_chart_rounded,
-                          color: Color(AppColors.primaryBlue),
-                          size: 28,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Esta Semana',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Colors.grey[50]!,
-                            Colors.white,
                           ],
                         ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            spreadRadius: 1,
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _WeekStatCard(
-                                  title: 'Horas\nTrabalhadas',
-                                  value: '32h 15m',
-                                  icon: Icons.schedule_rounded,
-                                  color: Color(AppColors.primaryBlue),
+                        const SizedBox(height: 16),
+
+                        // Alinhar os botões de ações rápidas na mesma linha
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            Expanded(
+                              child: _ModernActionCard(
+                                title: 'Registrar\nPonto',
+                                icon: Icons.fingerprint_rounded,
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Color(AppColors.primaryBlue),
+                                    Color(AppColors.primaryBlue).withValues(alpha: 0.8),
+                                  ],
                                 ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const TimecardScreen(),
+                                    ),
+                                  );
+                                },
                               ),
-                              Container(
-                                width: 1,
-                                height: 60,
-                                color: Colors.grey[300],
-                                margin: const EdgeInsets.symmetric(horizontal: 16),
-                              ),
-                              Expanded(
-                                child: _WeekStatCard(
-                                  title: 'Dias\nPresentes',
-                                  value: '4/5',
-                                  icon: Icons.check_circle_rounded,
-                                  color: Color(AppColors.successGreen),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _ModernActionCard(
+                                title: 'Espelho\nDigital',
+                                icon: Icons.receipt_long_rounded,
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Color(AppColors.successGreen),
+                                    Color(AppColors.successGreen).withValues(alpha: 0.8),
+                                  ],
                                 ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const HistoryScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _ModernActionCard(
+                                title: 'Solicitações',
+                                icon: Icons.edit_note_rounded,
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Color(AppColors.warningYellow),
+                                    Color(AppColors.warningYellow).withValues(alpha: 0.8),
+                                  ],
+                                ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const AdjustmentsScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _ModernActionCard(
+                                title: 'Relatórios',
+                                icon: Icons.analytics_rounded,
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Color(AppColors.secondaryTeal),
+                                    Color(AppColors.secondaryTeal).withValues(alpha: 0.8),
+                                  ],
+                                ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const ReportsScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 32),
+
+                        // Estatísticas da semana
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.bar_chart_rounded,
+                              color: Color(AppColors.primaryBlue),
+                              size: 28,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Esta Semana',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.grey[50]!,
+                                Colors.white,
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withValues(alpha: 0.1),
+                                spreadRadius: 1,
+                                blurRadius: 10,
+                                offset: const Offset(0, 2),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
-                          Divider(color: Colors.grey[300]),
-                          const SizedBox(height: 16),
-                          Row(
+                          child: Column(
                             children: [
-                              Expanded(
-                                child: _WeekStatCard(
-                                  title: 'Horas\nExtras',
-                                  value: '2h 30m',
-                                  icon: Icons.trending_up_rounded,
-                                  color: Color(AppColors.warningYellow),
-                                ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _WeekStatCard(
+                                      title: 'Horas\nTrabalhadas',
+                                      value: weekHours,
+                                      icon: Icons.schedule_rounded,
+                                      color: Color(AppColors.primaryBlue),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 60,
+                                    color: Colors.grey[300],
+                                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                                  ),
+                                  Expanded(
+                                    child: _WeekStatCard(
+                                      title: 'Dias\nPresentes',
+                                      value: daysPresent,
+                                      icon: Icons.check_circle_rounded,
+                                      color: Color(AppColors.successGreen),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              Container(
-                                width: 1,
-                                height: 60,
-                                color: Colors.grey[300],
-                                margin: const EdgeInsets.symmetric(horizontal: 16),
-                              ),
-                              Expanded(
-                                child: _WeekStatCard(
-                                  title: 'Saldo de\nHoras',
-                                  value: '+2h 15m',
-                                  icon: Icons.account_balance_rounded,
-                                  color: Color(AppColors.secondaryTeal),
-                                ),
+                              const SizedBox(height: 16),
+                              Divider(color: Colors.grey[300]),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _WeekStatCard(
+                                      title: 'Horas\nExtras',
+                                      value: overtime,
+                                      icon: Icons.trending_up_rounded,
+                                      color: Color(AppColors.warningYellow),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 60,
+                                    color: Colors.grey[300],
+                                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                                  ),
+                                  Expanded(
+                                    child: _WeekStatCard(
+                                      title: 'Saldo de\nHoras',
+                                      value: balance,
+                                      icon: Icons.account_balance_rounded,
+                                      color: Color(AppColors.secondaryTeal),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    
-                    // Últimos registros
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.history_rounded,
-                          color: Color(AppColors.primaryBlue),
-                          size: 28,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Últimos Registros',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                        const SizedBox(height: 32),
+
+                        // Últimos registros
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.history_rounded,
+                              color: Color(AppColors.primaryBlue),
+                              size: 28,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Últimos Registros',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
+                        const SizedBox(height: 16),
+
+                        // Registros recentes (dinâmicos, se houver)
+                        if (_isLoading)
+                          const Center(child: CircularProgressIndicator())
+                        else if (recentRecords.isEmpty)
+                          const SizedBox.shrink()
+                        else
+                          ...recentRecords.map((r) => _RecentRecordCard(
+                            date: r['date'] ?? '—',
+                            entry: r['entry'] ?? '--:--',
+                            exit: r['exit'] ?? '--:--',
+                            total: r['total'] ?? '0h 00m',
+                          )),
+
+                        const SizedBox(height: 20),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    
-                    ...List.generate(3, (index) {
-                      final dates = ['Hoje', 'Ontem', 'Anteontem'];
-                      final entries = ['08:00', '08:15', '07:45'];
-                      final exits = ['17:00', '17:30', '17:15'];
-                      
-                      return _RecentRecordCard(
-                        date: dates[index],
-                        entry: entries[index],
-                        exit: exits[index],
-                        total: '8h 00m',
-                      );
-                    }),
-                    
-                    const SizedBox(height: 20),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -465,11 +724,9 @@ class DashboardContent extends StatelessWidget {
 
   String _getFormattedDate() {
     final now = DateTime.now();
-    final weekdays = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-    final months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 
-                   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    
-    return '${weekdays[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}';
+    // Formatação local pt-BR
+    final df = DateFormat("EEEE, d 'de' MMMM", 'pt_BR');
+    return toBeginningOfSentenceCase(df.format(now)) ?? df.format(now);
   }
 }
 
@@ -495,10 +752,10 @@ class _ModernStatusCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
+        color: Colors.white.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -510,7 +767,7 @@ class _ModernStatusCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
+                  color: color.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -549,7 +806,7 @@ class _ModernStatusCard extends StatelessWidget {
           Text(
             subtitle,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withValues(alpha: 0.8),
               fontSize: 10,
             ),
           ),
@@ -580,7 +837,7 @@ class _ModernActionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: gradient.colors.first.withOpacity(0.3),
+            color: gradient.colors.first.withValues(alpha: 0.3),
             spreadRadius: 1,
             blurRadius: 8,
             offset: const Offset(0, 4),
@@ -641,7 +898,7 @@ class _WeekStatCard extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
@@ -704,7 +961,7 @@ class _RecentRecordCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Color(AppColors.primaryBlue).withOpacity(0.1),
+              color: Color(AppColors.primaryBlue).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
