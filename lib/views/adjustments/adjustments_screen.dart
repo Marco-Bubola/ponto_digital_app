@@ -33,7 +33,7 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(AppColors.warningYellow).withOpacity(0.1),
+              Color(AppColors.warningYellow).withValues(alpha: 0.1),
               Colors.white,
             ],
           ),
@@ -51,13 +51,13 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                     end: Alignment.bottomRight,
                     colors: [
                       Color(AppColors.warningYellow),
-                      Color(AppColors.warningYellow).withOpacity(0.8),
+                      Color(AppColors.warningYellow).withValues(alpha: 0.8),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Color(AppColors.warningYellow).withOpacity(0.3),
+                      color: Color(AppColors.warningYellow).withValues(alpha: 0.3),
                       spreadRadius: 2,
                       blurRadius: 20,
                       offset: const Offset(0, 8),
@@ -69,7 +69,7 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: const Icon(
@@ -113,7 +113,7 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.grey.withOpacity(0.1),
+                      color: Colors.grey.withValues(alpha: 0.1),
                       spreadRadius: 1,
                       blurRadius: 8,
                       offset: const Offset(0, 2),
@@ -533,7 +533,7 @@ class _RequestCard extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
+                      color: statusColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
