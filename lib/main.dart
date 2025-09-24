@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
+import 'theme.dart';
+import 'views/auth/login_screen.dart';
 
 void main() {
-  runApp(const MainApp());
+  runApp(const PontoDigitalApp());
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class PontoDigitalApp extends StatelessWidget {
+  const PontoDigitalApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
-      ),
+    return MaterialApp(
+      title: 'Ponto Digital',
+      theme: AppTheme.lightTheme,
+      home: const LoginScreen(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
