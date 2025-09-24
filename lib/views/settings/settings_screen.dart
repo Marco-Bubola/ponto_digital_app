@@ -22,7 +22,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(AppColors.primaryBlue).withOpacity(0.1),
+              Color(AppColors.primaryBlue).withValues(alpha: 0.1),
               Colors.white,
             ],
           ),
@@ -47,7 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Color(AppColors.primaryBlue).withOpacity(0.3),
+                        color: Color(AppColors.primaryBlue).withValues(alpha: 0.3),
                         spreadRadius: 2,
                         blurRadius: 20,
                         offset: const Offset(0, 8),
@@ -61,7 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: const Icon(
@@ -101,10 +101,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.3),
+                            color: Colors.white.withValues(alpha: 0.3),
                             width: 1,
                           ),
                         ),
@@ -117,7 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 gradient: LinearGradient(
                                   colors: [
                                     Colors.white,
-                                    Colors.white.withOpacity(0.8),
+                                    Colors.white.withValues(alpha: 0.8),
                                   ],
                                 ),
                               ),
@@ -396,13 +396,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           gradient: LinearGradient(
                             colors: [
                               Color(AppColors.errorRed),
-                              Color(AppColors.errorRed).withOpacity(0.8),
+                              Color(AppColors.errorRed).withValues(alpha: 0.8),
                             ],
                           ),
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Color(AppColors.errorRed).withOpacity(0.3),
+                              color: Color(AppColors.errorRed).withValues(alpha: 0.3),
                               spreadRadius: 1,
                               blurRadius: 8,
                               offset: const Offset(0, 4),
@@ -512,7 +512,7 @@ class _ModernSettingsSection extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withValues(alpha: 0.1),
             spreadRadius: 1,
             blurRadius: 8,
             offset: const Offset(0, 2),
@@ -525,7 +525,7 @@ class _ModernSettingsSection extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(16),
               ),
@@ -651,7 +651,7 @@ class _ModernSwitchTile extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: value ? Color(AppColors.primaryBlue).withOpacity(0.1) : Colors.grey[100],
+              color: value ? Color(AppColors.primaryBlue).withValues(alpha: 0.1) : Colors.grey[100],
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
