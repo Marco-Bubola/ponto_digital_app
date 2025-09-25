@@ -1,6 +1,8 @@
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import '../../utils/constants.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/modern_record_card.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../../services/session_service.dart';
@@ -13,14 +15,16 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  DateTime _selectedDate = DateTime.now();
+  DateTime? _selectedDate = DateTime.now();
   List<TimeRecordItem> _records = [];
   bool _isLoading = false;
   String? _error;
+  // Quando null => mostrar todos os registros (sem filtro de data)
 
   @override
   void initState() {
     super.initState();
+    // Carregar registros da data atual
     _loadRecords();
   }
 
@@ -32,15 +36,37 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     try {
       final token = await SessionService.getToken();
-      final dateStr = '${_selectedDate.year.toString().padLeft(4, '0')}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
-      final uri = Uri.parse('http://localhost:3000/api/time-records?date=$dateStr');
+        Uri uri;
+        if (_selectedDate == null) {
+          uri = Uri.parse('http://localhost:3000/api/time-records');
+        } else {
+          final dateStr = '${_selectedDate!.year.toString().padLeft(4, '0')}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}';
+          uri = Uri.parse('http://localhost:3000/api/time-records?date=$dateStr');
+        }
       final resp = await http.get(uri, headers: {
         if (token != null) 'Authorization': 'Bearer $token',
       });
 
-      if (resp.statusCode == 200) {
-        final body = json.decode(resp.body) as Map<String, dynamic>;
-        final recs = (body['records'] as List<dynamic>?) ?? [];
+        if (resp.statusCode == 200) {
+          final bodyRaw = json.decode(resp.body);
+          List<dynamic> recs = [];
+          // backend pode retornar lista direta ou objeto com chaves diferentes
+          if (bodyRaw is List) {
+            recs = bodyRaw;
+          } else if (bodyRaw is Map<String, dynamic>) {
+            recs = (bodyRaw['records'] as List<dynamic>?) ?? (bodyRaw['data'] as List<dynamic>?) ?? (bodyRaw['items'] as List<dynamic>?) ?? [];
+          }
+        // se a resposta foi OK mas não houver registros, avisar o usuário
+        if (recs.isEmpty) {
+          if (mounted) {
+            // mostra um SnackBar informando que não há registros para a data
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(_selectedDate == null ? 'Nenhum registro encontrado.' : 'Nenhum registro encontrado para a data selecionada.')),
+              );
+            });
+          }
+        }
         final items = recs.map((r) {
           final map = r as Map<String, dynamic>;
           final ts = map['timestamp'] ?? map['createdAt'];
@@ -103,6 +129,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  // Nota: chamada ao endpoint `/dates` removida por decisão do produto.
+  // Permanece a coleção _availableDates para compatibilidade com o seletor,
+  // mas ela ficará vazia e o seletor permitirá todas as datas.
+
+  Future<void> _pickDate(BuildContext context) async {
+    final firstDate = DateTime.now().subtract(const Duration(days: 365));
+    final lastDate = DateTime.now();
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: firstDate,
+      lastDate: lastDate,
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+      });
+      await _loadRecords();
+    }
+  }
+
   List<TimeRecordItem> _generateMockRecords([DateTime? forDate]) {
     final d = forDate ?? DateTime.now();
     return [
@@ -133,21 +182,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     ];
   }
 
-  Future<void> _selectDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-      lastDate: DateTime.now(),
-    );
-
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-      });
-      _loadRecords();
-    }
-  }
+  
 
   @override
   Widget build(BuildContext context) {
@@ -206,11 +241,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ),
                         ),
                         const SizedBox(width: 16),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
+                              const Text(
                                 'Histórico de Registros',
                                 style: TextStyle(
                                   color: Colors.white,
@@ -218,7 +253,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              Text(
+                              const SizedBox(height: 4),
+                              const Text(
                                 'Acompanhe seus registros de ponto',
                                 style: TextStyle(
                                   color: Colors.white70,
@@ -261,7 +297,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    
+
                     // Seletor de data moderno
                     Container(
                       decoration: BoxDecoration(
@@ -275,7 +311,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: _selectDate,
+                          onTap: () => _pickDate(context),
                           borderRadius: BorderRadius.circular(16),
                           child: Padding(
                             padding: const EdgeInsets.all(16),
@@ -301,7 +337,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}',
+                            _selectedDate == null
+                              ? 'Todas as datas'
+                              : '${_selectedDate!.day.toString().padLeft(2, '0')}/${_selectedDate!.month.toString().padLeft(2, '0')}/${_selectedDate!.year}',
                                         style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 16,
@@ -356,9 +394,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 20),
                             itemCount: _records.length,
                             itemBuilder: (context, index) {
-                              final record = _records[index];
-                              return _ModernRecordCard(record: record);
-                            },
+                                final record = _records[index];
+                                final date = DateFormat('dd/MM/yyyy', 'pt_BR').format(record.timestamp);
+                                final time = DateFormat('HH:mm', 'pt_BR').format(record.timestamp);
+                                final typeStr = record.type == TimeRecordType.entrada ? 'Entrada' : record.type == TimeRecordType.pausa ? 'Pausa' : record.type == TimeRecordType.retorno ? 'Retorno' : 'Saída';
+                                final statusStr = record.status == RecordStatus.valid ? 'Confirmado' : record.status == RecordStatus.pendingAdjustment ? 'Pendente' : 'Inválido';
+                                final total = '';
+
+                                // calcular ocorrência (posição deste tipo na lista do dia)
+                                int occurrence = 1;
+                                try {
+                                  final lowerType = typeStr.toLowerCase();
+                                  final same = _records.where((rr) {
+                                    return rr.type.toString().toLowerCase().contains(lowerType) || lowerType.contains(rr.type.toString().toLowerCase());
+                                  }).toList();
+                                  occurrence = same.indexWhere((map) => map == record) + 1;
+                                  if (occurrence <= 0) occurrence = 1;
+                                } catch (_) {
+                                  occurrence = 1;
+                                }
+
+                                return ModernRecordCard(
+                                  date: date,
+                                  type: typeStr,
+                                  time: time,
+                                  location: record.location,
+                                  status: statusStr,
+                                  total: total,
+                                  occurrence: occurrence,
+                                );
+                              },
                           ),
               ),
 
@@ -372,189 +437,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-class _ModernRecordCard extends StatelessWidget {
-  final TimeRecordItem record;
-
-  const _ModernRecordCard({required this.record});
-
-  String _getTypeEmoji(TimeRecordType type) {
-    switch (type) {
-      case TimeRecordType.entrada:
-        return '🌅';
-      case TimeRecordType.pausa:
-        return '☕';
-      case TimeRecordType.retorno:
-        return '💼';
-      case TimeRecordType.saida:
-        return '�';
-    }
-  }
-
-  IconData _getTypeIcon(TimeRecordType type) {
-    switch (type) {
-      case TimeRecordType.entrada:
-        return Icons.login_rounded;
-      case TimeRecordType.pausa:
-        return Icons.pause_circle_rounded;
-      case TimeRecordType.retorno:
-        return Icons.play_circle_rounded;
-      case TimeRecordType.saida:
-        return Icons.logout_rounded;
-    }
-  }
-
-  String _getTypeName(TimeRecordType type) {
-    switch (type) {
-      case TimeRecordType.entrada:
-        return 'Entrada';
-      case TimeRecordType.pausa:
-        return 'Pausa';
-      case TimeRecordType.retorno:
-        return 'Retorno';
-      case TimeRecordType.saida:
-        return 'Saída';
-    }
-  }
-
-  Color _getStatusColor(RecordStatus status) {
-    switch (status) {
-      case RecordStatus.valid:
-        return Color(AppColors.successGreen);
-      case RecordStatus.pendingAdjustment:
-        return Color(AppColors.warningYellow);
-      case RecordStatus.invalid:
-        return Color(AppColors.errorRed);
-    }
-  }
-
-  String _getStatusLabel(RecordStatus status) {
-    switch (status) {
-      case RecordStatus.valid:
-        return 'Confirmado';
-      case RecordStatus.pendingAdjustment:
-        return 'Pendente';
-      case RecordStatus.invalid:
-        return 'Inválido';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            spreadRadius: 1,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            // Ícone do tipo com gradiente
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    _getStatusColor(record.status),
-                    _getStatusColor(record.status).withValues(alpha: 0.7),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                _getTypeIcon(record.type),
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            
-            // Informações principais
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        _getTypeEmoji(record.type),
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _getTypeName(record.type),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${record.timestamp.hour.toString().padLeft(2, '0')}:${record.timestamp.minute.toString().padLeft(2, '0')}',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.location_on_rounded,
-                        size: 14,
-                        color: Colors.grey[500],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        record.location,
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            
-            // Status badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: _getStatusColor(record.status).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: _getStatusColor(record.status).withValues(alpha: 0.3),
-                  width: 1,
-                ),
-              ),
-              child: Text(
-                _getStatusLabel(record.status),
-                style: TextStyle(
-                  color: _getStatusColor(record.status),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// ...classe _ModernRecordCard removida: uso substituído por ModernRecordCard compartilhado.
 
 class _ModernDaySummary extends StatelessWidget {
   final List<TimeRecordItem> records;
@@ -562,13 +445,64 @@ class _ModernDaySummary extends StatelessWidget {
   const _ModernDaySummary({required this.records});
 
   String _calculateWorkTime() {
-    // Lógica simplificada para calcular horas trabalhadas
-    return '8h 30m';
+    // Calcular tempo total: (saida - entrada) - pausas
+    DateTime? entrada;
+    DateTime? saida;
+    for (final r in records) {
+      if (r.type == TimeRecordType.entrada && entrada == null) entrada = r.timestamp;
+      if (r.type == TimeRecordType.saida) saida = r.timestamp;
+    }
+
+    if (entrada == null) return '--';
+    saida ??= records.map((r) => r.timestamp).reduce((a, b) => a.isAfter(b) ? a : b);
+
+    // soma pausas
+    Duration pausaTotal = Duration.zero;
+    DateTime? pausaInicio;
+    for (final r in records..sort((a, b) => a.timestamp.compareTo(b.timestamp))) {
+      if (r.type == TimeRecordType.pausa) {
+        pausaInicio = r.timestamp;
+      } else if (r.type == TimeRecordType.retorno && pausaInicio != null) {
+        pausaTotal += r.timestamp.difference(pausaInicio);
+        pausaInicio = null;
+      }
+    }
+
+    final total = saida.difference(entrada) - pausaTotal;
+    if (total.isNegative) return '--';
+    final hours = total.inHours;
+    final minutes = total.inMinutes.remainder(60);
+    return '${hours}h ${minutes}m';
   }
 
   String _calculateBreakTime() {
-    // Lógica simplificada para calcular tempo de pausa
-    return '1h 00m';
+    Duration pausaTotal = Duration.zero;
+    DateTime? pausaInicio;
+    for (final r in records..sort((a, b) => a.timestamp.compareTo(b.timestamp))) {
+      if (r.type == TimeRecordType.pausa) {
+        pausaInicio = r.timestamp;
+      } else if (r.type == TimeRecordType.retorno && pausaInicio != null) {
+        pausaTotal += r.timestamp.difference(pausaInicio);
+        pausaInicio = null;
+      }
+    }
+    // se houver pausa aberta até o final do dia, conta até o último registro
+    if (pausaInicio != null) {
+      final last = records.map((r) => r.timestamp).reduce((a, b) => a.isAfter(b) ? a : b);
+      pausaTotal += last.difference(pausaInicio);
+    }
+    final hours = pausaTotal.inHours;
+    final minutes = pausaTotal.inMinutes.remainder(60);
+    return '${hours}h ${minutes}m';
+  }
+
+  String _calculateStatus() {
+    if (records.isEmpty) return 'Vazio';
+    // Se houver algum registro pendente, o status é Pendente
+    if (records.any((r) => r.status == RecordStatus.pendingAdjustment)) return 'Pendente';
+    // Se houver algum inválido
+    if (records.any((r) => r.status == RecordStatus.invalid)) return 'Incorreto';
+    return 'Completo';
   }
 
   @override
@@ -649,7 +583,7 @@ class _ModernDaySummary extends StatelessWidget {
                 child: _SummaryCard(
                   icon: Icons.trending_up_rounded,
                   title: 'Status',
-                  value: 'Completo',
+                  value: _calculateStatus(),
                   color: Color(AppColors.secondaryTeal),
                 ),
               ),
