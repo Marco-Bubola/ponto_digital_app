@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../services/device_service.dart';
 import '../../utils/constants.dart';
 import '../../services/session_service.dart';
+import '../../widgets/modern_record_card.dart';
 
 class TimecardScreen extends StatefulWidget {
   const TimecardScreen({super.key});
@@ -16,11 +17,12 @@ class TimecardScreen extends StatefulWidget {
 class _TimecardScreenState extends State<TimecardScreen> {
   TimeRecordType? _currentAction;
   bool _isRecording = false;
+  bool _deviceAuthLimitReached = false;
   String _currentTime = '';
   String _currentLocation = 'Carregando localização...';
+  String? _debugDeviceId;
   // Dados reais do usuário (fallbacks)
   String _lastRecordTitle = 'Nenhum registro';
-  String _lastRecordSubtitle = '';
   String _lastRecordStatus = 'Pendente';
   List<Map<String, dynamic>> _records = [];
   bool _isLoadingRecords = false;
@@ -33,6 +35,10 @@ class _TimecardScreenState extends State<TimecardScreen> {
     _getCurrentLocation();
     _loadSessionData();
     _fetchTimeRecords();
+    // obter deviceId para debug
+    DeviceService.getDeviceId().then((id) {
+      if (mounted) setState(() => _debugDeviceId = id);
+    });
     // Atualizar o tempo a cada segundo
     Future.delayed(const Duration(seconds: 1), _updateTime);
   }
@@ -60,16 +66,13 @@ class _TimecardScreenState extends State<TimecardScreen> {
             _records = recs.map((r) => Map<String, dynamic>.from(r as Map)).toList();
             if (_records.isNotEmpty) {
               final first = _records.first;
-              final entry = first['type'] ?? '—';
+              final entry = first['type'] ?? first['entry'] ?? '—';
               final timeRaw = first['timestamp'] ?? first['createdAt'] ?? '';
-              String time = timeRaw.toString();
               try {
-                final dt = DateTime.parse(timeRaw.toString());
-                time = DateFormat('HH:mm', 'pt_BR').format(dt);
+                DateTime.parse(timeRaw.toString()).toLocal();
               } catch (_) {}
               _lastRecordTitle = entry.toString();
-              _lastRecordSubtitle = time;
-              _lastRecordStatus = first['overallStatus'] ?? _lastRecordStatus;
+              _lastRecordStatus = first['overallStatus'] ?? (first['confirmed'] == true ? 'Confirmado' : _lastRecordStatus);
             }
           });
           }
@@ -142,14 +145,6 @@ class _TimecardScreenState extends State<TimecardScreen> {
             setState(() => _lastRecordTitle = _lastRecordTitle.startsWith('Entrada') ? _lastRecordTitle : 'Saída - $exit');
           }
         }
-        final loc = today['location'] as String?;
-        if (loc != null && loc.isNotEmpty) {
-          if (mounted) {
-            setState(() {
-              _lastRecordSubtitle = 'Hoje - $loc';
-            });
-          }
-        }
         final confirmed = today['confirmed'];
         if (confirmed != null) {
           if (mounted) {
@@ -168,12 +163,10 @@ class _TimecardScreenState extends State<TimecardScreen> {
         }
       } else if (recs is List && recs.isNotEmpty) {
         final r = recs.first;
-        final date = r['date'] ?? '—';
         final entry = r['entry'] ?? '--:--';
-        if (mounted) {
+          if (mounted) {
           setState(() {
           _lastRecordTitle = 'Entrada - $entry';
-          _lastRecordSubtitle = '$date - ${r['location'] ?? _currentLocation}';
           _lastRecordStatus = (r['confirmed'] == true) ? 'Confirmado' : 'Pendente';
         });
         }
@@ -188,7 +181,35 @@ class _TimecardScreenState extends State<TimecardScreen> {
     return toBeginningOfSentenceCase(df.format(now)) ?? df.format(now);
   }
 
+  // Retorna o texto do badge de entrada (a partir da 2ª entrada)
+  String? _entradaBadgeText() {
+    final stats = _todayStats();
+    final entradaCount = stats['entradaCount'] as int;
+    const int maxPerDay = 8;
+    if (entradaCount < 2) return null;
+    final n = entradaCount.clamp(2, maxPerDay);
+    // Formatar sufixo ordinal simples (2ª, 3ª...)
+    return '$nª Entrada';
+  }
+
   Future<void> _recordTimecard(TimeRecordType type) async {
+    // Se já sabemos que o limite de dispositivos foi atingido, mostrar diálogo e abortar
+    if (_deviceAuthLimitReached) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Dispositivo não autorizado'),
+            content: const Text('Este dispositivo não pode ser autorizado porque o limite de dispositivos foi atingido. Remova dispositivos antigos pelo portal ou contate o suporte.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Fechar')),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() {
       _isRecording = true;
       _currentAction = type;
@@ -227,7 +248,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
       if (resp.statusCode == 401) {
         // Possível dispositivo não autorizado -> tentar autorizar e reenviar
         final body = resp.body;
-        if (body.contains('Dispositivo não autorizado') || body.contains('ID do dispositivo necessário')) {
+        if (body.contains('Dispositivo não autorizado') || body.contains('ID do dispositivo necessário') || body.toLowerCase().contains('device')) {
           final deviceId = await DeviceService.getDeviceId();
           final authUri = Uri.parse('http://localhost:3000/api/users/devices');
           final authResp = await http.post(
@@ -238,6 +259,40 @@ class _TimecardScreenState extends State<TimecardScreen> {
             },
             body: json.encode({ 'deviceId': deviceId, 'deviceName': 'FlutterApp' })
           );
+
+          // Se a autorização falhou devido a limite de dispositivos, propagamos uma mensagem clara
+          if (authResp.statusCode == 400) {
+            // Limite de dispositivos atingido — informar o usuário e impedir novas tentativas
+            String msg = authResp.body;
+            try {
+              final parsed = json.decode(authResp.body);
+              msg = (parsed['error'] ?? parsed['message'] ?? parsed['detail'] ?? parsed).toString();
+            } catch (_) {}
+            // Marcar flag para não tentar autorizar novamente nesta sessão
+            if (mounted) setState(() => _deviceAuthLimitReached = true);
+            // Mostrar diálogo informativo
+            if (mounted) {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Limite de dispositivos atingido'),
+                  content: Text('Não foi possível autorizar este dispositivo: $msg\n\nRemova dispositivos antigos pelo portal ou contate o suporte para liberar mais dispositivos.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Fechar')),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        // abrir instrução de suporte — aqui apenas informa
+                      },
+                      child: const Text('Suporte'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            // Parar o fluxo de autorização
+            return;
+          }
 
           if (authResp.statusCode == 201 || authResp.statusCode == 200) {
             // reenviar o registro uma vez
@@ -308,7 +363,6 @@ class _TimecardScreenState extends State<TimecardScreen> {
           final now = DateTime.now();
           final ts = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
           _lastRecordTitle = '${_getTypeDisplayName(type)} - $ts';
-          _lastRecordSubtitle = 'Agora - $_currentLocation';
           _lastRecordStatus = 'Confirmado';
         });
       }
@@ -402,55 +456,144 @@ class _TimecardScreenState extends State<TimecardScreen> {
     }).toList();
   }
 
-  bool _isButtonEnabled(TimeRecordType type) {
-    // Se já houve saída, nada mais deve ser registrado hoje
+  // Estatísticas rápidas do dia: contagens e último tipo
+  Map<String, dynamic> _todayStats() {
     final todayRecords = _recordsToday();
-    final hasEntrada = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'entrada');
-    final hasPausa = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'pausa');
-    final hasRetorno = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'retorno');
-    final hasSaida = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'saida');
+
+    // helper to canonicalize type strings into our set: entrada, pausa, retorno, saida
+    String canonicalType(String raw) {
+      final s = raw.toLowerCase().trim();
+      if (s.contains('entrada') || s == 'entry' || s == 'in') return 'entrada';
+      if (s.contains('pausa') || s.contains('pause') || s == 'break') return 'pausa';
+      if (s.contains('retorno') || s.contains('return') || s == 'ret') return 'retorno';
+      if (s.contains('saida') || s.contains('saída') || s.contains('exit') || s.contains('out')) return 'saida';
+      return s;
+    }
+
+    int entradaCount = 0;
+    int pausaCount = 0;
+    int retornoCount = 0;
+    int saidaCount = 0;
+    String? lastType;
+
+    DateTime? latest;
+    Map<String, dynamic>? latestRecord;
+
+    for (final r in todayRecords) {
+  final rawType = (r['type'] ?? r['entry'] ?? r['event'] ?? '').toString();
+  final c = canonicalType(rawType);
+      if (c == 'entrada') entradaCount++;
+      if (c == 'pausa') pausaCount++;
+      if (c == 'retorno') retornoCount++;
+      if (c == 'saida') saidaCount++;
+
+      // try parse timestamp
+      final rawTs = r['timestamp'] ?? r['createdAt'] ?? r['time'] ?? '';
+      try {
+        final dt = DateTime.parse(rawTs.toString()).toLocal();
+        if (latest == null || dt.isAfter(latest)) {
+          latest = dt;
+          latestRecord = r;
+        }
+      } catch (_) {
+        // ignore parse errors
+      }
+    }
+
+    if (latestRecord != null) {
+      final rawType = (latestRecord['type'] ?? latestRecord['entry'] ?? latestRecord['event'] ?? '').toString();
+      lastType = canonicalType(rawType);
+    } else if (todayRecords.isNotEmpty) {
+      // fallback: take last element as before
+      final last = todayRecords.last;
+      final t = (last['type'] ?? last['entry'] ?? last['event'] ?? '').toString();
+      lastType = canonicalType(t);
+    }
+
+    return {
+      'lastType': lastType,
+      'entradaCount': entradaCount,
+      'pausaCount': pausaCount,
+      'retornoCount': retornoCount,
+      'saidaCount': saidaCount,
+      'records': todayRecords,
+    };
+  }
+
+  bool _isButtonEnabled(TimeRecordType type) {
+    // Regras permitindo múltiplos ciclos e reinício de jornada após saída
+    final stats = _todayStats();
+    final lastType = stats['lastType'] as String?;
+    final entradaCount = stats['entradaCount'] as int;
+    final pausaCount = stats['pausaCount'] as int;
+    final retornoCount = stats['retornoCount'] as int;
+    final saidaCount = stats['saidaCount'] as int;
+
+    const int maxPerDay = 8; // máximo de entradas/pausas/retornos/saídas por dia
 
     if (_isRecording) return false;
-    if (hasSaida) return false;
 
     switch (type) {
       case TimeRecordType.entrada:
-        // Só pode registrar entrada se não houver entrada hoje
-        return !hasEntrada;
+        // Só permite nova entrada se não estiver em uma jornada aberta (último não seja 'entrada'/'retorno'/'pausa')
+        // ou se a última jornada foi finalizada por 'saida'. Limite máximo de entradas por dia.
+        if (entradaCount >= maxPerDay) return false;
+        if (lastType == null) return true;
+        return lastType == 'saida';
       case TimeRecordType.pausa:
-        // Pausa só se houver entrada e ainda não houver pausa
-        return hasEntrada && !hasPausa;
+        // Pausa só se houver uma jornada aberta (entradaCount > saidaCount) e o último não for 'pausa'
+        if (pausaCount >= maxPerDay) return false;
+        final openJornadas = entradaCount - saidaCount;
+        if (openJornadas <= 0) return false;
+        if (lastType == 'pausa') return false; // evitar pausar duas vezes seguidas
+        return lastType == 'entrada' || lastType == 'retorno';
       case TimeRecordType.retorno:
-        // Retorno só se já houve pausa e ainda não houve retorno
-        return hasPausa && !hasRetorno;
+        // Retorno só se a última ação foi 'pausa'
+        if (retornoCount >= maxPerDay) return false;
+        return lastType == 'pausa';
       case TimeRecordType.saida:
-        // Saída se já houve entrada e ainda não houve saída
-        return hasEntrada && !hasSaida;
+        // Saída se há uma jornada aberta (entradaCount > saidaCount) e último não é 'saida'
+        if (saidaCount >= maxPerDay) return false;
+        final open = entradaCount - saidaCount;
+        if (open <= 0) return false;
+        return lastType != 'saida';
     }
   }
 
   String _disabledReason(TimeRecordType type) {
-    final todayRecords = _recordsToday();
-    final hasEntrada = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'entrada');
-    final hasPausa = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'pausa');
-    final hasRetorno = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'retorno');
-    final hasSaida = todayRecords.any((r) => (r['type'] ?? r['entry'] ?? '').toString().toLowerCase() == 'saida');
+    final stats = _todayStats();
+    final lastType = stats['lastType'] as String?;
+    final entradaCount = stats['entradaCount'] as int;
+    final pausaCount = stats['pausaCount'] as int;
+    final retornoCount = stats['retornoCount'] as int;
+    final saidaCount = stats['saidaCount'] as int;
+
+    const int maxPerDay = 8;
 
     if (_isRecording) return 'Já está registrando...';
-    if (hasSaida) return 'Jornada finalizada (saída registrada)';
 
     switch (type) {
       case TimeRecordType.entrada:
-        return hasEntrada ? 'Entrada já registrada' : 'Registrar entrada';
+        if (entradaCount >= maxPerDay) return 'Máximo de $maxPerDay entradas por dia atingido';
+        if (lastType == null) return 'Registrar entrada';
+        if (lastType == 'saida') return 'Registrar nova entrada';
+        return 'Finalize a jornada atual (saída) antes de registrar nova entrada';
       case TimeRecordType.pausa:
-        if (!hasEntrada) return 'Registre a entrada primeiro';
-        return hasPausa ? 'Pausa já registrada' : 'Registrar pausa';
+        if (pausaCount >= maxPerDay) return 'Máximo de $maxPerDay pausas por dia atingido';
+        final openJornadas = entradaCount - saidaCount;
+        if (openJornadas <= 0) return 'Registre a entrada primeiro';
+        if (lastType == 'pausa') return 'Pausa já registrada (retorne antes de pausar novamente)';
+        return 'Registrar pausa';
       case TimeRecordType.retorno:
-        if (!hasPausa) return 'Nenhuma pausa registrada';
-        return hasRetorno ? 'Retorno já registrado' : 'Registrar retorno';
+        if (retornoCount >= maxPerDay) return 'Máximo de $maxPerDay retornos por dia atingido';
+        if (lastType != 'pausa') return 'Nenhuma pausa registrada para retornar';
+        return 'Registrar retorno';
       case TimeRecordType.saida:
-        if (!hasEntrada) return 'Registre a entrada primeiro';
-        return hasSaida ? 'Saída já registrada' : 'Registrar saída';
+        if (saidaCount >= maxPerDay) return 'Máximo de $maxPerDay saídas por dia atingido';
+        final open = entradaCount - saidaCount;
+        if (open <= 0) return 'Registre a entrada primeiro';
+        if (lastType == 'saida') return 'Saída já registrada';
+        return 'Registrar saída';
     }
   }
 
@@ -504,10 +647,10 @@ class _TimecardScreenState extends State<TimecardScreen> {
                   ),
                 // ...existing code...
                 
-                // Header moderno
+                // Header moderno (título à esquerda, horário atual à direita na mesma linha)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -527,75 +670,93 @@ class _TimecardScreenState extends State<TimecardScreen> {
                       ),
                     ],
                   ),
-                  child: Column(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: const Icon(
-                              Icons.fingerprint_rounded,
-                              color: Colors.white,
-                              size: 32,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Registro de Ponto',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(16),
                               ),
-                              Text(
-                                _getFormattedDate(),
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                  fontSize: 14,
-                                ),
+                              child: const Icon(
+                                Icons.fingerprint_rounded,
+                                color: Colors.white,
+                                size: 32,
                               ),
-                            ],
-                          ),
-                        ],
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Registro de Ponto',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        _getFormattedDate(),
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(alpha: 0.9),
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      // Badge de entrada (a partir da 2ª entrada)
+                                      if (_entradaBadgeText() != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(alpha: 0.14),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            _entradaBadgeText()!,
+                                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 24),
-                      
-                      // Relógio principal moderno
+
+                      // Horário atual alinhado à direita
                       Container(
-                        padding: const EdgeInsets.all(24),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.3),
-                            width: 1,
-                          ),
+                          color: Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
                         ),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              'Horário Atual',
+                              'Horário',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.9),
-                                fontSize: 16,
+                                fontSize: 12,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 6),
                             Text(
                               _currentTime,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 56,
+                                fontSize: 24,
                                 fontFeatures: [FontFeature.tabularFigures()],
                               ),
                             ),
@@ -605,7 +766,21 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
+
+                // Debug: mostrar deviceId (apenas para testes locais)
+                if (_debugDeviceId != null)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'deviceId: ${_debugDeviceId!}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                      textAlign: TextAlign.left,
+                    ),
+                  ),
+
+                // removido card compacto duplicado (usaremos os mesmos cards do histórico abaixo dos botões)
                 
                 // Status de localização moderno
                 Container(
@@ -741,6 +916,8 @@ class _TimecardScreenState extends State<TimecardScreen> {
                   ],
                 ),
                 const SizedBox(height: 20),
+
+                
                 
                 // Botões de ação modernos em linha única com validações de fluxo
                 Row(
@@ -769,107 +946,101 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     );
                   }).toList(),
                 ),
-                const SizedBox(height: 32),
-                
-                // Último registro moderno
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.grey[50]!,
-                        Colors.white,
-                      ],
+                const SizedBox(height: 20),
+
+                // ===== Últimos Registros (novo layout — igual ao History) =====
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Últimos Registros',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withValues(alpha: 0.1),
-                        spreadRadius: 1,
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.history_rounded,
-                            color: Color(AppColors.primaryBlue),
-                            size: 24,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Último Registro',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Color(AppColors.successGreen).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              Icons.login_rounded,
-                              color: Color(AppColors.successGreen),
-                              size: 24,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _lastRecordTitle,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _lastRecordSubtitle.isNotEmpty ? _lastRecordSubtitle : 'Hoje - $_currentLocation',
-                                  style: TextStyle(
-                                    color: Colors.grey[600],
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Color(AppColors.successGreen).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              _lastRecordStatus,
-                              style: TextStyle(
-                                color: Color(AppColors.successGreen),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
                   ),
                 ),
+                const SizedBox(height: 12),
+
+                if (_isLoadingRecords)
+                  SizedBox(
+                    width: double.infinity,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(Color(AppColors.primaryBlue))),
+                      ),
+                    ),
+                  )
+                else if (_records.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(color: Colors.grey.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0,2)),
+                      ],
+                    ),
+                    child: Text(
+                      'Nenhum registro recente.',
+                      style: TextStyle(color: Colors.grey[700]),
+                    ),
+                  )
+                else
+                  Column(
+                    children: _records.take(5).map((r) {
+                      final rawTs = r['timestamp'] ?? r['createdAt'] ?? '';
+                      String time = '--:--';
+                      String date = '';
+                      DateTime? dt;
+                      try {
+                        dt = DateTime.parse(rawTs.toString()).toLocal();
+                        time = DateFormat('HH:mm', 'pt_BR').format(dt);
+                        date = DateFormat('dd/MM/yyyy', 'pt_BR').format(dt);
+                      } catch (_) {}
+
+                      final typeStr = (r['type'] ?? r['entry'] ?? '').toString();
+                      final status = (r['overallStatus'] ?? r['confirmed'] ?? r['status'] ?? '').toString();
+                      final location = (r['location'] ?? r['place'] ?? r['address'] ?? '').toString();
+                      final total = (r['total'] ?? r['duration'] ?? r['workedDuration'] ?? '').toString();
+
+                      // calcular ocorrência (quantas vezes esse tipo já ocorreu hoje, incluindo este)
+                      int occurrence = 1;
+                      try {
+                        final today = DateTime.now();
+                        final sameDay = _records.where((rr) {
+                          final ts2 = rr['timestamp'] ?? rr['createdAt'];
+                          if (ts2 == null) return false;
+                          try {
+                            final dt2 = DateTime.parse(ts2.toString()).toLocal();
+                            return dt2.year == today.year && dt2.month == today.month && dt2.day == today.day;
+                          } catch (_) {
+                            return false;
+                          }
+                        }).toList();
+
+                        final lowerType = typeStr.toLowerCase();
+                        occurrence = sameDay.where((rr) {
+                          final t = (rr['type'] ?? rr['entry'] ?? '').toString().toLowerCase();
+                          return t.contains(lowerType) || lowerType.contains(t);
+                        }).toList().indexWhere((map) => map == r) + 1;
+                        if (occurrence <= 0) occurrence = 1;
+                      } catch (_) {
+                        occurrence = 1;
+                      }
+
+                      return ModernRecordCard(
+                        date: date,
+                        type: typeStr,
+                        time: time,
+                        location: location.isNotEmpty ? location : date,
+                        status: status,
+                        total: total,
+                        occurrence: occurrence,
+                      );
+                    }).toList(),
+                  ),
+
                 const SizedBox(height: 20),
               ],
             ),
