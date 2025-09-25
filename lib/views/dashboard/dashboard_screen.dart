@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../../services/device_service.dart';
+import '../../widgets/modern_record_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -21,28 +22,18 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
   
-  final List<Widget> _pages = [
-    const DashboardContent(),
-    const TimecardScreen(),
-    const HistoryScreen(),
-    const SettingsScreen(),
-  ];
 
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      DashboardContent(onNavigate: (int index) => setState(() => _currentIndex = index)),
+      const TimecardScreen(),
+      const HistoryScreen(),
+      const SettingsScreen(),
+    ];
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ponto Digital'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {
-              // TODO: Implementar notificações
-            },
-          ),
-        ],
-      ),
-      body: _pages[_currentIndex],
+      body: pages[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         currentIndex: _currentIndex,
@@ -81,7 +72,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 class DashboardContent extends StatefulWidget {
-  const DashboardContent({super.key});
+  final void Function(int index)? onNavigate;
+
+  const DashboardContent({super.key, this.onNavigate});
 
   @override
   State<DashboardContent> createState() => _DashboardContentState();
@@ -101,8 +94,8 @@ class _DashboardContentState extends State<DashboardContent> {
   String overtime = '0h 00m';
   String balance = '+0h 00m';
 
-  List<Map<String, String>> recentRecords = [];
-  List<Map<String, dynamic>> _records = [];
+  List<Map<String, dynamic>> recentRecords = [];
+  // registros brutos (armazenados temporariamente dentro do fetch)
   bool _isLoading = false;
   String? _error;
 
@@ -142,13 +135,16 @@ class _DashboardContentState extends State<DashboardContent> {
           // Registros recentes
           final recs = user['recentRecords'];
           if (recs != null && recs is List) {
-            recentRecords = recs.map<Map<String, String>>((r) {
+            recentRecords = recs.map<Map<String, dynamic>>((r) {
               try {
                 return {
                   'date': r['date']?.toString() ?? '—',
                   'entry': r['entry']?.toString() ?? '--:--',
                   'exit': r['exit']?.toString() ?? '--:--',
                   'total': r['total']?.toString() ?? '0h 00m',
+                  'type': r['type'] ?? r['action'] ?? '',
+                  'location': r['location'],
+                  'status': r['status'] ?? 'valid',
                 };
               } catch (e) {
                 return {'date': '—', 'entry': '--:--', 'exit': '--:--', 'total': '0h 00m'};
@@ -184,63 +180,161 @@ class _DashboardContentState extends State<DashboardContent> {
         final recs = (body['records'] as List<dynamic>?) ?? [];
         if (mounted) {
           setState(() {
-            _records = recs.map((r) => Map<String, dynamic>.from(r as Map)).toList();
-
-            // Atualizar visualizações com base no registro mais recente
-            if (_records.isNotEmpty) {
-              final first = _records.first;
-              final ts = first['timestamp'] ?? first['createdAt'];
-              if (ts != null) {
-                try {
-                  final dt = DateTime.parse(ts.toString());
-                  entryTime = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-                } catch (_) {
-                  entryTime = ts.toString();
-                }
-              }
-
-              entrySubtitle = first['location'] is Map ? (first['location']['name'] ?? entrySubtitle) : (first['location']?.toString() ?? entrySubtitle);
-            }
-
-            // Mapear últimos registros para exibição (máx 5)
+            // Parsear timestamps e normalizar registros
             final dateFmt = DateFormat('dd/MM/yyyy', 'pt_BR');
             final timeFmt = DateFormat('HH:mm', 'pt_BR');
-            recentRecords = _records.take(5).map<Map<String, String>>((r) {
+
+            final parsed = recs.map((r) {
+              final map = Map<String, dynamic>.from(r as Map);
+              final ts = map['timestamp'] ?? map['createdAt'];
+              DateTime? dt;
+              if (ts != null) {
+                try {
+                  dt = DateTime.parse(ts.toString()).toLocal();
+                } catch (_) {
+                  dt = null;
+                }
+              }
+              map['_ts'] = dt;
+              return map;
+            }).toList();
+
+            // Ordenar por timestamp desc (mais recente primeiro)
+            parsed.sort((a, b) {
+              final aTs = a['_ts'] as DateTime?;
+              final bTs = b['_ts'] as DateTime?;
+              if (aTs == null && bTs == null) return 0;
+              if (aTs == null) return 1;
+              if (bTs == null) return -1;
+              return bTs.compareTo(aTs);
+            });
+
+            // parsed já contém os registros normalizados para uso local
+
+            // Registros do dia atual
+            final today = DateTime.now();
+            bool sameDay(DateTime d) => d.year == today.year && d.month == today.month && d.day == today.day;
+            final todayRecords = parsed.where((m) => (m['_ts'] as DateTime?) != null && sameDay(m['_ts'] as DateTime)).toList();
+
+            // Entrada: menor horário do dia com tipo entrada
+            String fmtTime(DateTime dt) => '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+            DateTime? entradaDt;
+            DateTime? saidaDt;
+            for (final r in todayRecords) {
+              final typeStr = (r['type'] ?? r['action'] ?? '').toString().toLowerCase();
+              final ts = r['_ts'] as DateTime?;
+              if (ts == null) continue;
+              if (entradaDt == null && typeStr.contains('entrada') || entradaDt == null && typeStr.contains('entry')) {
+                entradaDt = ts;
+              }
+              if (typeStr.contains('saida') || typeStr.contains('saída') || typeStr.contains('exit')) {
+                if (saidaDt == null || ts.isAfter(saidaDt)) saidaDt = ts;
+              }
+            }
+
+            if (entradaDt != null) entryTime = fmtTime(entradaDt);
+            if (saidaDt != null) exitTime = fmtTime(saidaDt);
+
+            // Subtitulo com local do último registro do dia (se houver)
+            if (todayRecords.isNotEmpty) {
+              final last = todayRecords.first; // parsed sorted desc
+              entrySubtitle = last['location'] is Map ? (last['location']['name'] ?? entrySubtitle) : (last['location']?.toString() ?? entrySubtitle);
+            }
+
+            // Estatísticas da semana (baseado na semana atual: segunda -> domingo)
+            final now = DateTime.now();
+            final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+            final endOfWeek = startOfWeek.add(const Duration(days: 6));
+            final weekRecords = parsed.where((m) {
+              final dt = m['_ts'] as DateTime?;
+              if (dt == null) return false;
+              return !(dt.isBefore(startOfWeek) || dt.isAfter(endOfWeek));
+            }).toList();
+
+            Duration parseDurationString(String s) {
+              try {
+                final hMatch = RegExp(r"(\d+)h").firstMatch(s);
+                final mMatch = RegExp(r"(\d+)m").firstMatch(s);
+                final h = hMatch != null ? int.parse(hMatch.group(1)!) : 0;
+                final mm = mMatch != null ? int.parse(mMatch.group(1)!) : 0;
+                return Duration(hours: h, minutes: mm);
+              } catch (_) {
+                return Duration.zero;
+              }
+            }
+
+            Duration totalWeek = Duration.zero;
+            final presentDays = <String>{};
+            for (final r in weekRecords) {
+              final dt = r['_ts'] as DateTime?;
+              if (dt != null) presentDays.add('${dt.year}-${dt.month}-${dt.day}');
+              if (r['total'] != null && r['total'].toString().isNotEmpty) {
+                totalWeek += parseDurationString(r['total'].toString());
+              } else if (r['entryTime'] != null && r['exitTime'] != null) {
+                try {
+                  final e = DateTime.parse(r['entryTime'].toString()).toLocal();
+                  final s = DateTime.parse(r['exitTime'].toString()).toLocal();
+                  final dayDur = s.difference(e);
+                  if (!dayDur.isNegative) totalWeek += dayDur;
+                } catch (_) {}
+              }
+            }
+
+            final expectedPerDay = Duration(hours: 8);
+            final expectedTotal = expectedPerDay * presentDays.length;
+            final diff = totalWeek - expectedTotal;
+
+            String fmtDur(Duration d) {
+              final sign = d.isNegative ? '-' : '';
+              final ad = d.abs();
+              final h = ad.inHours;
+              final m = ad.inMinutes.remainder(60);
+              return '$sign${h}h ${m}m';
+            }
+
+            weekHours = fmtDur(totalWeek);
+            daysPresent = '${presentDays.length}/7';
+            if (diff.isNegative) {
+              overtime = '0h 00m';
+              balance = fmtDur(diff);
+            } else {
+              overtime = fmtDur(diff);
+              balance = '+$overtime';
+            }
+
+            // Mapear últimos registros para exibição (máx 5), mantendo metadados
+            recentRecords = parsed.take(5).map<Map<String, dynamic>>((r) {
               String date = '—';
               String entry = '--:--';
               String exit = '--:--';
               String total = '0h 00m';
+              String displayTime = '--:--';
 
-              final ts = r['timestamp'] ?? r['createdAt'];
-              if (ts != null) {
-                try {
-                  final dt = DateTime.parse(ts.toString());
-                  date = dateFmt.format(dt);
-                } catch (_) {
-                  date = ts.toString();
-                }
-              }
-
-              final type = r['type'] ?? r['action'] ?? '';
-              if (type != null && type.toString().isNotEmpty) {
-                entry = type.toString();
-              }
+              final dt = r['_ts'] as DateTime?;
+              if (dt != null) date = dateFmt.format(dt);
 
               if (r['entryTime'] != null) {
                 try {
-                  final dt = DateTime.parse(r['entryTime'].toString());
-                  entry = timeFmt.format(dt);
+                  final dte = DateTime.parse(r['entryTime'].toString()).toLocal();
+                  entry = timeFmt.format(dte);
                 } catch (_) {
                   entry = r['entryTime'].toString();
                 }
               }
               if (r['exitTime'] != null) {
                 try {
-                  final dt = DateTime.parse(r['exitTime'].toString());
-                  exit = timeFmt.format(dt);
+                  final dte = DateTime.parse(r['exitTime'].toString()).toLocal();
+                  exit = timeFmt.format(dte);
                 } catch (_) {
                   exit = r['exitTime'].toString();
                 }
+              }
+              // displayTime: prefer entry, else timestamp time
+              if (entry != '--:--') {
+                displayTime = entry;
+              } else if (dt != null) {
+                displayTime = timeFmt.format(dt);
               }
               if (r['total'] != null) total = r['total'].toString();
 
@@ -249,6 +343,11 @@ class _DashboardContentState extends State<DashboardContent> {
                 'entry': entry,
                 'exit': exit,
                 'total': total,
+                'type': r['type'] ?? r['action'] ?? '',
+                'location': r['location'],
+                'status': r['status'] ?? 'valid',
+                'timestamp': r['_ts'],
+                'displayTime': displayTime,
               };
             }).toList();
           });
@@ -349,21 +448,7 @@ class _DashboardContentState extends State<DashboardContent> {
                                 ],
                               ),
                               const SizedBox(height: 4),
-                              // Refresh button & loading
-                              Row(
-                                children: [
-                                  if (_isLoading) const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                  ),
-                                  IconButton(
-                                    onPressed: _isLoading ? null : () async => await _fetchTimeRecords(),
-                                    icon: const Icon(Icons.refresh, color: Colors.white),
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                ],
-                              ),
+                             
                               
                             ],
                           ),
@@ -499,12 +584,17 @@ class _DashboardContentState extends State<DashboardContent> {
                                   ],
                                 ),
                                 onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const TimecardScreen(),
-                                    ),
-                                  );
+                                  // Navegar via callback para preservar a BottomNavigationBar
+                                  if (widget.onNavigate != null) {
+                                    widget.onNavigate!(1);
+                                  } else {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const TimecardScreen(),
+                                      ),
+                                    );
+                                  }
                                 },
                               ),
                             ),
@@ -520,12 +610,16 @@ class _DashboardContentState extends State<DashboardContent> {
                                   ],
                                 ),
                                 onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const HistoryScreen(),
-                                    ),
-                                  );
+                                  if (widget.onNavigate != null) {
+                                    widget.onNavigate!(2);
+                                  } else {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const HistoryScreen(),
+                                      ),
+                                    );
+                                  }
                                 },
                               ),
                             ),
@@ -617,60 +711,50 @@ class _DashboardContentState extends State<DashboardContent> {
                           ),
                           child: Column(
                             children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _WeekStatCard(
-                                      title: 'Horas\nTrabalhadas',
-                                      value: weekHours,
-                                      icon: Icons.schedule_rounded,
-                                      color: Color(AppColors.primaryBlue),
-                                    ),
-                                  ),
-                                  Container(
-                                    width: 1,
-                                    height: 60,
-                                    color: Colors.grey[300],
-                                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                                  ),
-                                  Expanded(
-                                    child: _WeekStatCard(
-                                      title: 'Dias\nPresentes',
-                                      value: daysPresent,
-                                      icon: Icons.check_circle_rounded,
-                                      color: Color(AppColors.successGreen),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Divider(color: Colors.grey[300]),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _WeekStatCard(
-                                      title: 'Horas\nExtras',
-                                      value: overtime,
-                                      icon: Icons.trending_up_rounded,
-                                      color: Color(AppColors.warningYellow),
-                                    ),
-                                  ),
-                                  Container(
-                                    width: 1,
-                                    height: 60,
-                                    color: Colors.grey[300],
-                                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                                  ),
-                                  Expanded(
-                                    child: _WeekStatCard(
-                                      title: 'Saldo de\nHoras',
-                                      value: balance,
-                                      icon: Icons.account_balance_rounded,
-                                      color: Color(AppColors.secondaryTeal),
-                                    ),
-                                  ),
-                                ],
+                              // Mostrar os 4 cartões em uma única linha responsiva
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final spacing = 12.0;
+                                  return Row(
+                                    children: [
+                                      Expanded(
+                                        child: _WeekStatCard(
+                                          title: 'Horas\nTrabalhadas',
+                                          value: weekHours,
+                                          icon: Icons.schedule_rounded,
+                                          color: Color(AppColors.primaryBlue),
+                                        ),
+                                      ),
+                                      SizedBox(width: spacing),
+                                      Expanded(
+                                        child: _WeekStatCard(
+                                          title: 'Dias\nPresentes',
+                                          value: daysPresent,
+                                          icon: Icons.check_circle_rounded,
+                                          color: Color(AppColors.successGreen),
+                                        ),
+                                      ),
+                                      SizedBox(width: spacing),
+                                      Expanded(
+                                        child: _WeekStatCard(
+                                          title: 'Horas\nExtras',
+                                          value: overtime,
+                                          icon: Icons.trending_up_rounded,
+                                          color: Color(AppColors.warningYellow),
+                                        ),
+                                      ),
+                                      SizedBox(width: spacing),
+                                      Expanded(
+                                        child: _WeekStatCard(
+                                          title: 'Saldo de\nHoras',
+                                          value: balance,
+                                          icon: Icons.account_balance_rounded,
+                                          color: Color(AppColors.secondaryTeal),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -702,12 +786,38 @@ class _DashboardContentState extends State<DashboardContent> {
                         else if (recentRecords.isEmpty)
                           const SizedBox.shrink()
                         else
-                          ...recentRecords.map((r) => _RecentRecordCard(
-                            date: r['date'] ?? '—',
-                            entry: r['entry'] ?? '--:--',
-                            exit: r['exit'] ?? '--:--',
-                            total: r['total'] ?? '0h 00m',
-                          )),
+                          ...recentRecords.map((r) {
+                            final typeStr = r['type']?.toString() ?? '';
+                            final date = r['date'] ?? '—';
+                            final time = (r['displayTime'] ?? '--:--').toString();
+                            final location = r['location']?.toString() ?? '—';
+                            final status = r['status']?.toString() ?? 'valid';
+                            final total = r['total']?.toString() ?? '0h 00m';
+
+                            // compute occurrence among recentRecords (best-effort)
+                            int occurrence = 1;
+                            try {
+                              final lowerType = typeStr.toLowerCase();
+                              final same = recentRecords.where((rr) {
+                                final t = (rr['type'] ?? '').toString().toLowerCase();
+                                return t.contains(lowerType) || lowerType.contains(t);
+                              }).toList();
+                              occurrence = same.indexWhere((map) => map == r) + 1;
+                              if (occurrence <= 0) occurrence = 1;
+                            } catch (_) {
+                              occurrence = 1;
+                            }
+
+                            return ModernRecordCard(
+                              date: date,
+                              type: typeStr,
+                              time: time,
+                              location: location,
+                              status: status,
+                              total: total,
+                              occurrence: occurrence,
+                            );
+                          }),
 
                         const SizedBox(height: 20),
                       ],
@@ -849,27 +959,32 @@ class _ModernActionCard extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  icon,
-                  color: Colors.white,
-                  size: 36,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: const TextStyle(
+          child: SizedBox(
+            height: 140,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
                     color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                    size: 36,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -930,79 +1045,4 @@ class _WeekStatCard extends StatelessWidget {
   }
 }
 
-class _RecentRecordCard extends StatelessWidget {
-  final String date;
-  final String entry;
-  final String exit;
-  final String total;
-
-  const _RecentRecordCard({
-    required this.date,
-    required this.entry,
-    required this.exit,
-    required this.total,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey[200]!,
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Color(AppColors.primaryBlue).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.today_rounded,
-              color: Color(AppColors.primaryBlue),
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  date,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '$entry - $exit',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            total,
-            style: TextStyle(
-              color: Color(AppColors.successGreen),
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// _RecentRecordCardModern removed — use ModernRecordCard from widgets
