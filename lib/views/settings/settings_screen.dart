@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../utils/constants.dart';
+import '../../services/session_service.dart';
+import '../../services/theme_service.dart';
+import '../auth/login_screen.dart';
+import 'edit_profile_screen.dart';
+import 'change_password_screen.dart';
+import 'help_center_screen.dart';
+import 'devices_management_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -12,6 +19,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = true;
   bool _biometricEnabled = false;
   bool _darkMode = false;
+  
+  // Dados do usuário
+  String _userName = 'Usuário';
+  String _userEmail = 'usuario@empresa.com';
+  String _companyName = '';
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+    // Inicializar estado do switch de tema a partir do ThemeService
+    _darkMode = ThemeService.themeModeNotifier.value == ThemeMode.dark;
+    ThemeService.themeModeNotifier.addListener(() {
+      if (mounted) {
+        setState(() {
+          _darkMode = ThemeService.themeModeNotifier.value == ThemeMode.dark;
+        });
+      }
+    });
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = await SessionService.getUser();
+      if (user != null && mounted) {
+        setState(() {
+          _userName = user['name'] ?? 'Usuário';
+          _userEmail = user['email'] ?? 'usuario@empresa.com';
+          _companyName = (user['company'] != null && user['company']['name'] != null)
+              ? user['company']['name']
+              : '';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _logout() async {
+    try {
+      await SessionService.clear();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 8),
+                Text('Erro ao fazer logout: $e'),
+              ],
+            ),
+            backgroundColor: Color(AppColors.errorRed),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,30 +213,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             ),
                             const SizedBox(width: 16),
-                            const Expanded(
+                            Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    'João Silva',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
+                                  _isLoading 
+                                    ? const SizedBox(
+                                        width: 150,
+                                        height: 18,
+                                        child: LinearProgressIndicator(
+                                          backgroundColor: Colors.white24,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : Text(
+                                        _userName,
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                  const SizedBox(height: 4),
+                                  _isLoading
+                                    ? const SizedBox(
+                                        width: 200,
+                                        height: 14,
+                                        child: LinearProgressIndicator(
+                                          backgroundColor: Colors.white24,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+                                        ),
+                                      )
+                                    : Text(
+                                        _userEmail,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                  if (_companyName.isNotEmpty && !_isLoading) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _companyName,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white60,
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'joao.silva@empresa.com',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
+                                  ],
                                 ],
                               ),
                             ),
-                            Icon(
+                            const Icon(
                               Icons.verified_rounded,
                               color: Colors.white,
                               size: 20,
@@ -183,22 +292,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             title: 'Editar Perfil',
                             subtitle: 'Alterar dados pessoais',
                             onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Row(
-                                    children: [
-                                      Icon(Icons.info_outline, color: Colors.white),
-                                      SizedBox(width: 8),
-                                      Text('Funcionalidade em desenvolvimento'),
-                                    ],
-                                  ),
-                                  backgroundColor: Color(AppColors.warningYellow),
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const EditProfileScreen(),
                                 ),
-                              );
+                              ).then((_) => _loadUserData()); // Recarregar dados ao voltar
                             },
                           ),
                           _ModernSettingsTile(
@@ -206,20 +305,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             title: 'Alterar Senha',
                             subtitle: 'Atualizar sua senha de acesso',
                             onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Row(
-                                    children: [
-                                      Icon(Icons.info_outline, color: Colors.white),
-                                      SizedBox(width: 8),
-                                      Text('Funcionalidade em desenvolvimento'),
-                                    ],
-                                  ),
-                                  backgroundColor: Color(AppColors.warningYellow),
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const ChangePasswordScreen(),
                                 ),
                               );
                             },
@@ -285,6 +374,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               setState(() {
                                 _darkMode = value;
                               });
+                              // Aplicar e salvar preferência global
+                              ThemeService.setThemeMode(value ? ThemeMode.dark : ThemeMode.light);
                             },
                           ),
                         ],
@@ -302,20 +393,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             title: 'Central de Ajuda',
                             subtitle: 'FAQ e tutoriais',
                             onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Row(
-                                    children: [
-                                      Icon(Icons.info_outline, color: Colors.white),
-                                      SizedBox(width: 8),
-                                      Text('Funcionalidade em desenvolvimento'),
-                                    ],
-                                  ),
-                                  backgroundColor: Color(AppColors.warningYellow),
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const HelpCenterScreen(),
                                 ),
                               );
                             },
@@ -384,6 +465,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               );
                             },
                           ),
+                          _ModernSettingsTile(
+                            icon: Icons.devices_rounded,
+                            title: 'Gerenciar Dispositivos',
+                            subtitle: 'Listar e remover dispositivos autorizados',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const DevicesManagementScreen(),
+                                ),
+                              );
+                            },
+                          ),
                         ],
                       ),
                       const SizedBox(height: 20),
@@ -438,10 +532,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     ElevatedButton(
                                       onPressed: () {
                                         Navigator.pop(context);
-                                        // TODO: Implementar logout real
+                                        _logout();
                                       },
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Color(AppColors.errorRed),
+                                        foregroundColor: Colors.white,
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(8),
                                         ),
