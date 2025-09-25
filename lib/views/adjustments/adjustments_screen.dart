@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../utils/constants.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
+import '../../services/session_service.dart';
 
 class AdjustmentsScreen extends StatefulWidget {
   const AdjustmentsScreen({super.key});
@@ -16,12 +21,147 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadUserAndRequests();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _justificationCtrl.dispose();
+    _dateCtrl.dispose();
+    _timeStartCtrl.dispose();
+    _timeEndCtrl.dispose();
     super.dispose();
+  }
+
+  String? _userName;
+  String? _userCpf;
+  List<Map<String, dynamic>> _requests = [];
+  String? _selectedType;
+  String _selectedDateStr = '';
+  String _timeStart = '';
+  String _timeEnd = '';
+  final TextEditingController _justificationCtrl = TextEditingController();
+  final TextEditingController _dateCtrl = TextEditingController();
+  final TextEditingController _timeStartCtrl = TextEditingController();
+  final TextEditingController _timeEndCtrl = TextEditingController();
+  String? _pickedFilePath;
+  bool _isSending = false;
+
+  Future<void> _loadUserAndRequests() async {
+    try {
+      final user = await SessionService.getUser();
+      if (user != null) {
+        setState(() {
+          _userName = user['name']?.toString();
+          _userCpf = user['cpf']?.toString();
+        });
+      }
+    } catch (_) {}
+    await _loadRequestsFromApi();
+  }
+
+  Future<void> _loadRequestsFromApi() async {
+    try {
+      final token = await SessionService.getToken();
+      final uri = Uri.parse('http://localhost:3000/api/adjustments');
+      final resp = await http.get(uri, headers: { if (token != null) 'Authorization': 'Bearer $token' });
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body);
+        List<dynamic> items = [];
+        if (body is List) {
+          items = body;
+        } else if (body is Map) {
+          items = (body['items'] ?? body['data'] ?? body['records'] ?? []) as List<dynamic>;
+        }
+        setState(() => _requests = items.map((e) => Map<String,dynamic>.from(e as Map)).toList());
+      } else {
+        // keep default mock
+      }
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<void> _sendRequest() async {
+    final type = _selectedType ?? 'ajuste';
+    final date = _selectedDateStr;
+    final start = _timeStart;
+    final end = _timeEnd;
+    final desc = _justificationCtrl.text.trim();
+
+    if (date.isEmpty && desc.isEmpty) {
+      showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text('Preencha dados'), content: const Text('Selecione a data ou escreva uma justificativa.'), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))]));
+      return;
+    }
+
+    final payload = {
+      'type': type,
+      'date': date,
+      'start': start,
+      'end': end,
+      'description': desc,
+      'cpf': _userCpf,
+    };
+
+    setState(() => _isSending = true);
+    try {
+      final token = await SessionService.getToken();
+      final uri = Uri.parse('http://localhost:3000/api/adjustments');
+      http.Response resp;
+      if (_pickedFilePath != null && _pickedFilePath!.isNotEmpty) {
+        // send multipart with file
+        final request = http.MultipartRequest('POST', uri);
+        if (token != null) request.headers['Authorization'] = 'Bearer $token';
+        request.fields.addAll(payload.map((k, v) => MapEntry(k, v?.toString() ?? '')));
+        final file = File(_pickedFilePath!);
+        final filename = _pickedFilePath!.split(Platform.pathSeparator).last;
+        request.files.add(await http.MultipartFile.fromPath('attachment', file.path, filename: filename));
+        final streamed = await request.send();
+        resp = await http.Response.fromStream(streamed);
+      } else {
+        resp = await http.post(uri, headers: { 'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token' }, body: json.encode(payload));
+      }
+
+      if (resp.statusCode == 201 || resp.statusCode == 200) {
+        // success
+        if (!mounted) return;
+        showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text('Enviado'), content: const Text('Sua solicitação foi enviada com sucesso.'), actions: [TextButton(onPressed: () { Navigator.pop(ctx); _tabController.animateTo(0); _loadRequestsFromApi(); }, child: const Text('OK'))]));
+        // limpar formulário
+        setState(() {
+          _selectedType = null;
+          _selectedDateStr = '';
+          _timeStart = '';
+          _timeEnd = '';
+          _justificationCtrl.clear();
+          _dateCtrl.clear();
+          _timeStartCtrl.clear();
+          _timeEndCtrl.clear();
+          _pickedFilePath = null;
+        });
+      } else {
+        String bodyMsg = resp.body;
+        if (bodyMsg.isEmpty) bodyMsg = '<sem corpo>';
+        if (mounted) showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text('Erro'), content: Text('Falha ao enviar: ${resp.statusCode}\n$bodyMsg'), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))]));
+      }
+    } catch (e) {
+      if (mounted) showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text('Erro'), content: Text('Falha de conexão: $e'), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))]));
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  Future<void> _pickAttachment() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png']);
+      if (result != null && result.files.isNotEmpty) {
+        setState(() {
+          _pickedFilePath = result.files.first.path;
+        });
+      }
+    } catch (e) {
+      // ignore for now
+    }
   }
 
   @override
@@ -66,6 +206,11 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                 ),
                 child: Row(
                   children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    ),
+                    const SizedBox(width: 4),
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -75,15 +220,15 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                       child: const Icon(
                         Icons.edit_note_rounded,
                         color: Colors.white,
-                        size: 32,
+                        size: 28,
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    const Expanded(
+                    const SizedBox(width: 12),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          const Text(
                             'Solicitações',
                             style: TextStyle(
                               color: Colors.white,
@@ -91,9 +236,10 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+                          const SizedBox(height: 4),
                           Text(
-                            'Gerencie seus ajustes de ponto',
-                            style: TextStyle(
+                            _userName != null ? 'Olá, $_userName' : 'Gerencie seus ajustes de ponto',
+                            style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 14,
                             ),
@@ -155,37 +301,33 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
   }
 
   Widget _buildRequestsList() {
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        _RequestCard(
-          id: '#001',
-          type: 'Ajuste de Horário',
-          date: '15/09/2025',
-          status: 'Pendente',
-          description: 'Ajuste de entrada - 08:15 para 08:00',
-          statusColor: Color(AppColors.warningYellow),
-          onTap: () => _showRequestDetails('#001'),
-        ),
-        _RequestCard(
-          id: '#002',
-          type: 'Ausência Justificada',
-          date: '10/09/2025',
-          status: 'Aprovado',
-          description: 'Consulta médica - 14:00 às 16:00',
-          statusColor: Color(AppColors.successGreen),
-          onTap: () => _showRequestDetails('#002'),
-        ),
-        _RequestCard(
-          id: '#003',
-          type: 'Horas Extras',
-          date: '05/09/2025',
-          status: 'Rejeitado',
-          description: 'Projeto urgente - 2 horas extras',
-          statusColor: Color(AppColors.errorRed),
-          onTap: () => _showRequestDetails('#003'),
-        ),
-      ],
+    return RefreshIndicator(
+      onRefresh: () async => await _loadRequestsFromApi(),
+      child: _requests.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16.0),
+              children: const [
+                SizedBox(height: 60),
+                Center(child: Text('Sem solicitações. Puxe para atualizar.')),
+              ],
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: _requests.length,
+              itemBuilder: (context, i) {
+                final r = _requests[i];
+                return _RequestCard(
+                  id: r['id']?.toString() ?? '#${i + 1}',
+                  type: r['type']?.toString() ?? 'Ajuste',
+                  date: r['date']?.toString() ?? '',
+                  status: r['status']?.toString() ?? 'Pendente',
+                  description: r['description']?.toString() ?? '',
+                  statusColor: r['status'] == 'Aprovado' ? Color(AppColors.successGreen) : r['status'] == 'Rejeitado' ? Color(AppColors.errorRed) : Color(AppColors.warningYellow),
+                  onTap: () => _showRequestDetails(r['id']?.toString() ?? '#${i + 1}'),
+                );
+              },
+            ),
     );
   }
 
@@ -255,7 +397,7 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                       ),
                     ],
                     onChanged: (value) {
-                      // TODO: Implementar lógica
+                      setState(() => _selectedType = value);
                     },
                   ),
                   const SizedBox(height: 20),
@@ -279,14 +421,20 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                       suffixIcon: const Icon(Icons.calendar_today),
                     ),
                     readOnly: true,
+                    controller: _dateCtrl,
                     onTap: () async {
-                      await showDatePicker(
+                      final picked = await showDatePicker(
                         context: context,
                         initialDate: DateTime.now(),
                         firstDate: DateTime.now().subtract(const Duration(days: 30)),
                         lastDate: DateTime.now().add(const Duration(days: 30)),
                       );
-                      // TODO: Implementar lógica
+                      if (picked != null) {
+                        setState(() {
+                          _selectedDateStr = '${picked.day.toString().padLeft(2,'0')}/${picked.month.toString().padLeft(2,'0')}/${picked.year}';
+                          _dateCtrl.text = _selectedDateStr;
+                        });
+                      }
                     },
                   ),
                   const SizedBox(height: 20),
@@ -313,8 +461,15 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                             suffixIcon: const Icon(Icons.access_time),
                           ),
                           readOnly: true,
-                          onTap: () {
-                            // TODO: Implementar seletor de hora
+                          controller: _timeStartCtrl,
+                          onTap: () async {
+                            final t = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+                            if (t != null) {
+                              setState(() {
+                                _timeStart = t.format(context);
+                                _timeStartCtrl.text = _timeStart;
+                              });
+                            }
                           },
                         ),
                       ),
@@ -333,8 +488,15 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                             suffixIcon: const Icon(Icons.access_time),
                           ),
                           readOnly: true,
-                          onTap: () {
-                            // TODO: Implementar seletor de hora
+                          controller: _timeEndCtrl,
+                          onTap: () async {
+                            final t = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+                            if (t != null) {
+                              setState(() {
+                                _timeEnd = t.format(context);
+                                _timeEndCtrl.text = _timeEnd;
+                              });
+                            }
                           },
                         ),
                       ),
@@ -349,6 +511,7 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
+                    controller: _justificationCtrl,
                     maxLines: 4,
                     decoration: InputDecoration(
                       border: OutlineInputBorder(
@@ -361,39 +524,42 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                   const SizedBox(height: 20),
                   
                   // Anexo
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.grey[300]!,
-                        style: BorderStyle.solid,
+                  InkWell(
+                    onTap: () async => await _pickAttachment(),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Colors.grey[300]!,
+                          style: BorderStyle.solid,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.cloud_upload,
-                          size: 48,
-                          color: Color(AppColors.neutralGray),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Clique para anexar documentos',
-                          style: TextStyle(
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.cloud_upload,
+                            size: 48,
                             color: Color(AppColors.neutralGray),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'PDF, JPG, PNG (máx. 5MB)',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(AppColors.neutralGray),
+                          const SizedBox(height: 8),
+                          Text(
+                            _pickedFilePath == null ? 'Clique para anexar documentos' : 'Anexo: ${_pickedFilePath!.split(Platform.pathSeparator).last}',
+                            style: TextStyle(
+                              color: Color(AppColors.neutralGray),
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 4),
+                          Text(
+                            'PDF, JPG, PNG (máx. 5MB)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(AppColors.neutralGray),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -402,9 +568,7 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () {
-                        _submitRequest();
-                      },
+                      onPressed: _isSending ? null : () async { await _sendRequest(); },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Color(AppColors.primaryBlue),
                         foregroundColor: Colors.white,
@@ -413,10 +577,12 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      child: const Text(
-                        'Enviar Solicitação',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
+                      child: _isSending
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Text(
+                              'Enviar Solicitação',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
                     ),
                   ),
                 ],
@@ -467,24 +633,7 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
     );
   }
 
-  void _submitRequest() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Solicitação Enviada'),
-        content: const Text('Sua solicitação foi enviada com sucesso e está aguardando aprovação.'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _tabController.animateTo(0);
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
+  // _submitRequest removed: replaced by _sendRequest which calls backend and updates list
 }
 
 class _RequestCard extends StatelessWidget {
