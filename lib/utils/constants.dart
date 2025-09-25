@@ -12,7 +12,7 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   
   // Security Settings
-  static const int maxDevicesPerUser = 3;
+  static const int maxDevicesPerUser = 5;
   static const double gpsRadiusMeters = 100.0;
   
   // Time Settings
