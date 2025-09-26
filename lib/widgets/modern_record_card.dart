@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../utils/constants.dart';
+// import '../utils/constants.dart'; // not needed here anymore
+import '../theme.dart';
 
 class ModernRecordCard extends StatelessWidget {
   final String date;
@@ -21,12 +22,7 @@ class ModernRecordCard extends StatelessWidget {
     this.occurrence,
   });
 
-  Color _getStatusColor() {
-    final s = status.toString().toLowerCase();
-    if (s.contains('pend') || s.contains('pending')) return Color(AppColors.warningYellow);
-    if (s.contains('inv') || s.contains('invalid') || s.contains('invál')) return Color(AppColors.errorRed);
-    return Color(AppColors.successGreen);
-  }
+  // removed context-free helper; status color is computed inside build
 
   String _getStatusLabel() {
     final s = status.toString().toLowerCase();
@@ -64,17 +60,23 @@ class ModernRecordCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    Color statusColor;
+    final s = status.toString().toLowerCase();
+  if (s.contains('pend') || s.contains('pending')) { statusColor = theme.warningColor; }
+  else if (s.contains('inv') || s.contains('invalid') || s.contains('invál')) { statusColor = theme.errorColor; }
+  else { statusColor = theme.successColor; }
     return Column(
       children: [
         Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: theme.cardColor,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withValues(alpha: 0.08),
+                color: theme.shadowColor.withValues(alpha: 0.06),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
@@ -84,18 +86,22 @@ class ModernRecordCard extends StatelessWidget {
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      _getStatusColor(),
-                      _getStatusColor().withValues(alpha: 0.7),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        statusColor,
+                        statusColor.withValues(alpha: 0.7),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(_typeIcon(), color: Colors.white, size: 22),
+                child: Builder(builder: (context) {
+                  final base = statusColor;
+                  final fg = base.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+                  return Icon(_typeIcon(), color: fg, size: 22);
+                }),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -113,20 +119,20 @@ class ModernRecordCard extends StatelessWidget {
                             children: [
                               Text(
                                 _typeLabel(),
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 16, fontWeight: FontWeight.w600),
                               ),
                               if (occurrence != null && occurrence! >= 2) ...[
                                 const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: _getStatusColor().withValues(alpha: 0.12),
+                                    color: statusColor.withValues(alpha: 0.12),
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: _getStatusColor().withValues(alpha: 0.18)),
+                                      border: Border.all(color: statusColor.withValues(alpha: 0.18)),
                                   ),
                                   child: Text(
                                     '$occurrenceª ${_shortTypeLabel()}',
-                                    style: TextStyle(color: _getStatusColor(), fontSize: 12, fontWeight: FontWeight.w700),
+                                      style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700),
                                   ),
                                 ),
                               ],
@@ -137,18 +143,14 @@ class ModernRecordCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       time,
-                      style: TextStyle(
-                        color: Color(AppColors.primaryBlue),
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Theme.of(context).colorScheme.primary, fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(Icons.location_on_rounded, size: 14, color: Colors.grey[500]),
+                        Icon(Icons.location_on_rounded, size: 14, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
                         const SizedBox(width: 6),
-                        Expanded(child: Text(location, style: TextStyle(color: Colors.grey[600], fontSize: 12))),
+                        Expanded(child: Text(location, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 12))),
                       ],
                     ),
                   ],
@@ -159,23 +161,19 @@ class ModernRecordCard extends StatelessWidget {
                 children: [
                   Text(
                     date,
-                    style: TextStyle(
-                      color: Color(AppColors.primaryBlue),
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Theme.of(context).colorScheme.primary, fontSize: 15, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: _getStatusColor().withValues(alpha: 0.1),
+                      color: statusColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _getStatusColor().withValues(alpha: 0.3)),
+                      border: Border.all(color: statusColor.withValues(alpha: 0.3)),
                     ),
                     child: Text(
                       _getStatusLabel(),
-                      style: TextStyle(color: _getStatusColor(), fontWeight: FontWeight.w600, fontSize: 12),
+                      style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 12),
                     ),
                   ),
                 ],
