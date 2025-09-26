@@ -101,7 +101,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Editar Perfil'),
-        backgroundColor: Color(AppColors.primaryBlue),
+        backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -111,8 +111,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(AppColors.primaryBlue).withValues(alpha: 0.1),
-              Colors.white,
+              Theme.of(context).colorScheme.primary.withValues(alpha: 0.06),
+              Theme.of(context).scaffoldBackgroundColor,
             ],
           ),
         ),
@@ -131,11 +131,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           children: [
                             CircleAvatar(
                               radius: 60,
-                              backgroundColor: Color(AppColors.primaryBlue).withValues(alpha: 0.1),
+                              backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
                               child: Icon(
                                 Icons.person_rounded,
                                 size: 60,
-                                color: Color(AppColors.primaryBlue),
+                                color: Theme.of(context).colorScheme.primary,
                               ),
                             ),
                             Positioned(
@@ -144,7 +144,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: Color(AppColors.primaryBlue),
+                                  color: Theme.of(context).colorScheme.primary,
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(
@@ -162,11 +162,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: Theme.of(context).cardColor,
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.grey.withValues(alpha: 0.1),
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
                               spreadRadius: 1,
                               blurRadius: 8,
                               offset: const Offset(0, 2),
@@ -233,8 +233,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         height: 56,
                         child: ElevatedButton(
                           onPressed: _isSaving ? null : _saveProfile,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Color(AppColors.primaryBlue),
+                            style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
