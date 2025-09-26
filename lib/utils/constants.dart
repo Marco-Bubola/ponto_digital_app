@@ -1,7 +1,15 @@
 // Constantes do aplicativo Ponto Digital
 class AppConstants {
   // API Configuration
+  // Default production API base. You can override this at build/run time using
+  // --dart-define=API_BASE=<url>. Example for local testing with Android emulator:
+  // flutter run -d emulator-5554 --dart-define=API_BASE=http://10.0.2.2:3000
   static const String baseUrl = 'https://api.pontodigital.com';
+
+  // Backwards-compatible alias used across the app. Reads the compile-time
+  // environment variable 'API_BASE' when provided via --dart-define. If not
+  // provided, falls back to the production `baseUrl`.
+  static const String apiBase = String.fromEnvironment('API_BASE', defaultValue: baseUrl);
   static const String apiVersion = 'v1';
   
   // Google Gemini AI
