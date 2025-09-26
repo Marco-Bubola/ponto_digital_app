@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../../services/device_service.dart';
 import '../../utils/constants.dart';
+import '../../theme.dart';
 import '../../services/session_service.dart';
 import '../../widgets/modern_record_card.dart';
 
@@ -52,7 +53,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
     try {
       final token = await SessionService.getToken();
       final deviceId = await DeviceService.getDeviceId();
-      final uri = Uri.parse('http://localhost:3000/api/time-records');
+  final uri = Uri.parse('${AppConstants.apiBase}/api/time-records');
       final resp = await http.get(uri, headers: {
         if (token != null) 'Authorization': 'Bearer $token',
         'X-Device-ID': deviceId,
@@ -226,7 +227,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
 
       // Chamar endpoint backend
       final deviceId = await DeviceService.getDeviceId();
-      final uri = Uri.parse('http://localhost:3000/api/time-records');
+  final uri = Uri.parse('${AppConstants.apiBase}/api/time-records');
       var resp = await http.post(
         uri,
         headers: {
@@ -250,7 +251,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
         final body = resp.body;
         if (body.contains('Dispositivo não autorizado') || body.contains('ID do dispositivo necessário') || body.toLowerCase().contains('device')) {
           final deviceId = await DeviceService.getDeviceId();
-          final authUri = Uri.parse('http://localhost:3000/api/users/devices');
+          final authUri = Uri.parse('${AppConstants.apiBase}/api/users/devices');
           final authResp = await http.post(
             authUri,
             headers: {
@@ -429,15 +430,16 @@ class _TimecardScreenState extends State<TimecardScreen> {
   }
 
   Color _getTypeColor(TimeRecordType type) {
+    final theme = Theme.of(context);
     switch (type) {
       case TimeRecordType.entrada:
-        return Color(AppColors.successGreen);
+        return theme.successColor;
       case TimeRecordType.pausa:
-        return Color(AppColors.warningYellow);
+        return theme.warningColor;
       case TimeRecordType.retorno:
-        return Color(AppColors.primaryBlue);
+        return theme.colorScheme.primary;
       case TimeRecordType.saida:
-        return Color(AppColors.secondaryTeal);
+        return theme.colorScheme.secondary;
     }
   }
 
@@ -599,6 +601,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -606,8 +609,8 @@ class _TimecardScreenState extends State<TimecardScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(AppColors.primaryBlue).withValues(alpha: 0.1),
-              Colors.white,
+              theme.colorScheme.primary.withValues(alpha: 0.08),
+              theme.scaffoldBackgroundColor,
             ],
           ),
         ),
@@ -640,10 +643,10 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Color(AppColors.errorRed).withValues(alpha: 0.1),
+                      color: theme.errorColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(_recordsError!, style: TextStyle(color: Color(AppColors.errorRed))),
+                    child: Text(_recordsError!, style: TextStyle(color: theme.errorColor)),
                   ),
                 // ...existing code...
                 
@@ -679,20 +682,20 @@ class _TimecardScreenState extends State<TimecardScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
+                                color: theme.colorScheme.onPrimary.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              child: const Icon(
-                                Icons.fingerprint_rounded,
-                                color: Colors.white,
-                                size: 32,
-                              ),
+                              child: Icon(
+                                  Icons.fingerprint_rounded,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
                             ),
                             const SizedBox(width: 12),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Registro de Ponto',
                                   style: TextStyle(
                                     color: Colors.white,
@@ -705,7 +708,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                                       Text(
                                         _getFormattedDate(),
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.9),
+                                          color: Colors.white70,
                                           fontSize: 13,
                                         ),
                                       ),
@@ -715,12 +718,12 @@ class _TimecardScreenState extends State<TimecardScreen> {
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withValues(alpha: 0.14),
+                                            color: theme.colorScheme.onPrimary.withValues(alpha: 0.14),
                                             borderRadius: BorderRadius.circular(12),
                                           ),
-                                          child: Text(
+                                            child: Text(
                                             _entradaBadgeText()!,
-                                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                                            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                                           ),
                                         ),
                                     ],
@@ -735,9 +738,9 @@ class _TimecardScreenState extends State<TimecardScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
+                          color: theme.colorScheme.onPrimary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                          border: Border.all(color: theme.colorScheme.onPrimary.withValues(alpha: 0.18)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
@@ -745,7 +748,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                             Text(
                               'Horário',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.9),
+                                color: Colors.white70,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -775,7 +778,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     margin: const EdgeInsets.only(bottom: 8),
                     child: Text(
                       'deviceId: ${_debugDeviceId!}',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                      style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
                       textAlign: TextAlign.left,
                     ),
                   ),
@@ -786,11 +789,11 @@ class _TimecardScreenState extends State<TimecardScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: theme.cardColor,
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withValues(alpha: 0.1),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
                         spreadRadius: 1,
                         blurRadius: 10,
                         offset: const Offset(0, 2),
@@ -802,12 +805,12 @@ class _TimecardScreenState extends State<TimecardScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Color(AppColors.successGreen).withValues(alpha: 0.1),
+                          color: theme.successColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
                           Icons.location_on_rounded,
-                          color: Color(AppColors.successGreen),
+                          color: theme.successColor,
                           size: 24,
                         ),
                       ),
@@ -827,7 +830,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                             Text(
                               _currentLocation,
                               style: TextStyle(
-                                color: Colors.grey[600],
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                                 fontSize: 14,
                               ),
                             ),
@@ -836,7 +839,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                       ),
                       Icon(
                         Icons.check_circle_rounded,
-                        color: Color(AppColors.successGreen),
+                        color: theme.successColor,
                         size: 24,
                       ),
                     ],
@@ -851,13 +854,13 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Color(AppColors.warningYellow).withValues(alpha: 0.1),
-                          Colors.white,
+                          theme.warningColor.withValues(alpha: 0.1),
+                          theme.cardColor,
                         ],
                       ),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: Color(AppColors.warningYellow).withValues(alpha: 0.3),
+                        color: theme.warningColor.withValues(alpha: 0.3),
                         width: 1,
                       ),
                     ),
@@ -866,12 +869,12 @@ class _TimecardScreenState extends State<TimecardScreen> {
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Color(AppColors.primaryBlue).withValues(alpha: 0.1),
+                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
                           child: CircularProgressIndicator(
                             valueColor: AlwaysStoppedAnimation<Color>(
-                              Color(AppColors.primaryBlue),
+                              theme.colorScheme.primary,
                             ),
                             strokeWidth: 3,
                           ),
@@ -879,16 +882,17 @@ class _TimecardScreenState extends State<TimecardScreen> {
                         const SizedBox(height: 16),
                         Text(
                           'Registrando ${_getTypeDisplayName(_currentAction!)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Validando identidade e localização...',
                           style: TextStyle(
-                            color: Colors.grey[600],
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                             fontSize: 14,
                           ),
                         ),
@@ -903,7 +907,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                   children: [
                     Icon(
                       Icons.touch_app_rounded,
-                      color: Color(AppColors.primaryBlue),
+                      color: theme.colorScheme.primary,
                       size: 28,
                     ),
                     const SizedBox(width: 8),
@@ -911,6 +915,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                       'Selecione o tipo de registro',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
                   ],
@@ -966,7 +971,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     child: Center(
                       child: Padding(
                         padding: const EdgeInsets.all(12.0),
-                        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(Color(AppColors.primaryBlue))),
+                        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary)),
                       ),
                     ),
                   )
@@ -975,15 +980,15 @@ class _TimecardScreenState extends State<TimecardScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: theme.cardColor,
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
-                        BoxShadow(color: Colors.grey.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0,2)),
+                        BoxShadow(color: theme.colorScheme.onSurface.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0,2)),
                       ],
                     ),
                     child: Text(
                       'Nenhum registro recente.',
-                      style: TextStyle(color: Colors.grey[700]),
+                      style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.75)),
                     ),
                   )
                 else
@@ -1084,7 +1089,7 @@ class _ModernTimecardButton extends StatelessWidget {
                 ],
               )
             : LinearGradient(
-                colors: [Colors.grey[300]!, Colors.grey[400]!],
+                colors: [Theme.of(context).colorScheme.surface, Theme.of(context).colorScheme.surfaceContainerHighest],
               ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: isEnabled
@@ -1115,14 +1120,14 @@ class _ModernTimecardButton extends StatelessWidget {
                 const SizedBox(height: 8),
                 Icon(
                   icon,
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.onPrimary,
                   size: 32,
                 ),
                 const SizedBox(height: 12),
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
