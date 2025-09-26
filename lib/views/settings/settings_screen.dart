@@ -182,10 +182,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
+                          color: Theme.of(context).cardColor,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.3),
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
                             width: 1,
                           ),
                         ),
@@ -197,18 +197,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 shape: BoxShape.circle,
                                 gradient: LinearGradient(
                                   colors: [
-                                    Colors.white,
-                                    Colors.white.withValues(alpha: 0.8),
+                                    Theme.of(context).colorScheme.surface,
+                                    Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
                                   ],
                                 ),
                               ),
                               child: CircleAvatar(
                                 radius: 30,
-                                backgroundColor: Colors.white,
+                                backgroundColor: Theme.of(context).colorScheme.surface,
                                 child: Icon(
                                   Icons.person_rounded,
                                   size: 35,
-                                  color: Color(AppColors.primaryBlue),
+                                  color: Theme.of(context).colorScheme.primary,
                                 ),
                               ),
                             ),
@@ -218,55 +218,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   _isLoading 
-                                    ? const SizedBox(
+                                    ? SizedBox(
                                         width: 150,
                                         height: 18,
                                         child: LinearProgressIndicator(
-                                          backgroundColor: Colors.white24,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          backgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
+                                          valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
                                         ),
                                       )
                                     : Text(
                                         _userName,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 18,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                                          color: Theme.of(context).colorScheme.onPrimary,
                                         ),
                                       ),
                                   const SizedBox(height: 4),
                                   _isLoading
-                                    ? const SizedBox(
+                                    ? SizedBox(
                                         width: 200,
                                         height: 14,
                                         child: LinearProgressIndicator(
-                                          backgroundColor: Colors.white24,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+                                          backgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
+                                          valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.8)),
                                         ),
                                       )
                                     : Text(
                                         _userEmail,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 14,
-                                          color: Colors.white70,
+                                          color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.85),
                                         ),
                                       ),
                                   if (_companyName.isNotEmpty && !_isLoading) ...[
                                     const SizedBox(height: 4),
                                     Text(
                                       _companyName,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 12,
-                                        color: Colors.white60,
+                                        color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7),
                                       ),
                                     ),
                                   ],
                                 ],
                               ),
                             ),
-                            const Icon(
+                            Icon(
                               Icons.verified_rounded,
-                              color: Colors.white,
+                              color: Theme.of(context).colorScheme.onPrimary,
                               size: 20,
                             ),
                           ],
@@ -601,13 +601,14 @@ class _ModernSettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
             spreadRadius: 1,
             blurRadius: 8,
             offset: const Offset(0, 2),
@@ -620,7 +621,7 @@ class _ModernSettingsSection extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: color.withValues(alpha: 0.08),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(16),
               ),
@@ -667,23 +668,24 @@ class _ModernSettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
+                child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.grey[100],
+                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   icon,
-                  color: Colors.grey[600],
+                  color: theme.colorScheme.onSurface,
                   size: 20,
                 ),
               ),
@@ -694,9 +696,10 @@ class _ModernSettingsTile extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -704,7 +707,7 @@ class _ModernSettingsTile extends StatelessWidget {
                       subtitle,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey[600],
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -712,7 +715,7 @@ class _ModernSettingsTile extends StatelessWidget {
               ),
               Icon(
                 Icons.chevron_right_rounded,
-                color: Colors.grey[400],
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
               ),
             ],
           ),
@@ -739,6 +742,7 @@ class _ModernSwitchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -746,12 +750,12 @@ class _ModernSwitchTile extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: value ? Color(AppColors.primaryBlue).withValues(alpha: 0.1) : Colors.grey[100],
+                  color: value ? theme.colorScheme.primary.withValues(alpha: 0.08) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
-              color: value ? Color(AppColors.primaryBlue) : Colors.grey[600],
+              color: value ? theme.colorScheme.primary : theme.colorScheme.onSurface,
               size: 20,
             ),
           ),
@@ -762,17 +766,18 @@ class _ModernSwitchTile extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(
+                    style: TextStyle(
                     fontSize: 14,
-                    color: Colors.grey[600],
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
               ],
@@ -781,7 +786,11 @@ class _ModernSwitchTile extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeThumbColor: Color(AppColors.primaryBlue),
+            trackColor: WidgetStateProperty.resolveWith<Color?>((states) {
+              if (states.contains(WidgetState.selected)) return theme.colorScheme.onSurface.withValues(alpha: 0.4);
+              return null;
+            }),
+            activeThumbColor: theme.colorScheme.primary,
           ),
         ],
       ),
