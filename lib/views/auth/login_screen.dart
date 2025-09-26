@@ -35,7 +35,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-  final url = Uri.parse('http://127.0.0.1:3000/api/auth/login');
+  final url = Uri.parse('${AppConstants.apiBase}/api/auth/login');
       final body = {
         'email': _emailController.text.trim(),
         'password': _passwordController.text,
