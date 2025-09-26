@@ -101,7 +101,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             padding: const EdgeInsets.all(8),
                             margin: const EdgeInsets.only(right: 12),
                             decoration: BoxDecoration(
-                              color: onPrimary.withOpacity(0.12),
+                              // subtle circle background using withValues
+                              color: onPrimary.withValues(alpha: 0.12),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(Icons.arrow_back, color: onPrimary),
@@ -110,7 +111,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: onPrimary.withOpacity(0.12),
+                            // make the icon background theme-aware and avoid withOpacity deprecation
+                            color: onPrimary.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Icon(Icons.bar_chart_rounded, color: onPrimary, size: 28),
@@ -122,7 +124,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             children: [
                               Text('Relatórios', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: onPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
                               const SizedBox(height: 4),
-                              Text('Visão semanal e exportação', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: onPrimary.withOpacity(0.9), fontSize: 13)),
+                              Text('Visão semanal e exportação', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: onPrimary.withValues(alpha: 0.9), fontSize: 13)),
                             ],
                           ),
                         ),
@@ -494,8 +496,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
         start = DateTime(now.year, now.month, 1);
       }
 
-      final uri = Uri.parse('http://localhost:3000/api/time-records?startDate=${start.toIso8601String()}&endDate=${end.toIso8601String()}');
-      final resp = await http.get(uri, headers: {'Authorization': 'Bearer $token'});
+  final uri = Uri.parse('${AppConstants.apiBase}/api/time-records?startDate=${start.toIso8601String()}&endDate=${end.toIso8601String()}');
+  final resp = await http.get(uri, headers: {'Authorization': 'Bearer $token'});
       if (resp.statusCode == 200) {
         final body = json.decode(resp.body) as Map<String, dynamic>;
         final recs = (body['records'] as List<dynamic>?) ?? (body['data'] as List<dynamic>?) ?? [];
@@ -644,11 +646,11 @@ class _SummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
       ),
-      child: Row(
+            child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withValues(alpha: 31), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
             child: Icon(icon, color: color),
           ),
           const SizedBox(width: 12),
@@ -678,7 +680,7 @@ class _TimeRecordRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bg = isOdd ? theme.colorScheme.surfaceVariant : theme.cardColor;
+  final bg = isOdd ? theme.colorScheme.surfaceContainerHighest : theme.cardColor;
     final txtColor = theme.textTheme.bodyLarge?.color ?? theme.colorScheme.onSurface;
     return Container(
       color: bg,
