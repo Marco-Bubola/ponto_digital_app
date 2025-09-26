@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import '../../utils/constants.dart';
+import '../../theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../widgets/modern_record_card.dart';
 import 'package:http/http.dart' as http;
@@ -38,10 +39,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
       final token = await SessionService.getToken();
         Uri uri;
         if (_selectedDate == null) {
-          uri = Uri.parse('http://localhost:3000/api/time-records');
+          uri = Uri.parse('${AppConstants.apiBase}/api/time-records');
         } else {
-          final dateStr = '${_selectedDate!.year.toString().padLeft(4, '0')}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}';
-          uri = Uri.parse('http://localhost:3000/api/time-records?date=$dateStr');
+          // Backend expects a startDate and endDate in ISO format to filter by range.
+          final start = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, 0, 0, 0);
+          final end = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day, 23, 59, 59, 999);
+          final startIso = start.toIso8601String();
+          final endIso = end.toIso8601String();
+          uri = Uri.parse('${AppConstants.apiBase}/api/time-records?startDate=$startIso&endDate=$endIso');
         }
       final resp = await http.get(uri, headers: {
         if (token != null) 'Authorization': 'Bearer $token',
@@ -186,6 +191,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -193,8 +199,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(AppColors.secondaryTeal).withValues(alpha: 0.1),
-              Colors.white,
+              theme.colorScheme.secondary.withValues(alpha: 0.08),
+              theme.scaffoldBackgroundColor,
             ],
           ),
         ),
@@ -217,7 +223,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Color(AppColors.secondaryTeal).withValues(alpha: 0.3),
+                      color: Color(AppColors.secondaryTeal).withValues(alpha: 0.28),
                       spreadRadius: 2,
                       blurRadius: 20,
                       offset: const Offset(0, 8),
@@ -231,10 +237,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
+                            color: theme.colorScheme.onPrimary.withValues(alpha: 0.16),
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.history_rounded,
                             color: Colors.white,
                             size: 32,
@@ -245,7 +251,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'Histórico de Registros',
                                 style: TextStyle(
                                   color: Colors.white,
@@ -254,7 +260,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              const Text(
+                              Text(
                                 'Acompanhe seus registros de ponto',
                                 style: TextStyle(
                                   color: Colors.white70,
@@ -266,25 +272,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
+                            color: theme.colorScheme.onPrimary.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: IconButton(
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.download_rounded,
                               color: Colors.white,
                             ),
                             onPressed: () {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: const Row(
+                                  content: Row(
                                     children: [
-                                      Icon(Icons.info_outline, color: Colors.white),
-                                      SizedBox(width: 8),
-                                      Text('Funcionalidade em desenvolvimento'),
+                                      Icon(Icons.info_outline, color: theme.colorScheme.onPrimary),
+                                      const SizedBox(width: 8),
+                                      const Text('Funcionalidade em desenvolvimento'),
                                     ],
                                   ),
-                                  backgroundColor: Color(AppColors.warningYellow),
+                                  backgroundColor: theme.warningColor,
                                   behavior: SnackBarBehavior.floating,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -301,10 +307,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     // Seletor de data moderno
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
+                        color: theme.colorScheme.onPrimary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.3),
+                          color: theme.colorScheme.onPrimary.withValues(alpha: 0.22),
                           width: 1,
                         ),
                       ),
@@ -327,7 +333,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Text(
+                                      Text(
                                         'Data selecionada',
                                         style: TextStyle(
                                           color: Colors.white70,
@@ -340,7 +346,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             _selectedDate == null
                               ? 'Todas as datas'
                               : '${_selectedDate!.day.toString().padLeft(2, '0')}/${_selectedDate!.month.toString().padLeft(2, '0')}/${_selectedDate!.year}',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: Colors.white,
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
@@ -507,22 +513,16 @@ class _ModernDaySummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.all(20),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.grey[50]!,
-            Colors.white,
-          ],
-        ),
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
+            color: theme.shadowColor.withValues(alpha: 0.08),
             spreadRadius: 1,
             blurRadius: 10,
             offset: const Offset(0, 2),
@@ -536,7 +536,7 @@ class _ModernDaySummary extends StatelessWidget {
             children: [
               Icon(
                 Icons.summarize_rounded,
-                color: Color(AppColors.primaryBlue),
+                color: theme.colorScheme.primary,
                 size: 24,
               ),
               const SizedBox(width: 8),
@@ -557,7 +557,7 @@ class _ModernDaySummary extends StatelessWidget {
                   icon: Icons.schedule_rounded,
                   title: 'Tempo Total',
                   value: _calculateWorkTime(),
-                  color: Color(AppColors.primaryBlue),
+                  color: theme.colorScheme.primary,
                 ),
               ),
               const SizedBox(width: 8),
@@ -566,7 +566,7 @@ class _ModernDaySummary extends StatelessWidget {
                   icon: Icons.coffee_rounded,
                   title: 'Pausas',
                   value: _calculateBreakTime(),
-                  color: Color(AppColors.warningYellow),
+                  color: theme.warningColor,
                 ),
               ),
               const SizedBox(width: 8),
@@ -575,7 +575,7 @@ class _ModernDaySummary extends StatelessWidget {
                   icon: Icons.check_circle_rounded,
                   title: 'Registros',
                   value: '${records.length}',
-                  color: Color(AppColors.successGreen),
+                  color: theme.successColor,
                 ),
               ),
               const SizedBox(width: 8),
@@ -584,7 +584,7 @@ class _ModernDaySummary extends StatelessWidget {
                   icon: Icons.trending_up_rounded,
                   title: 'Status',
                   value: _calculateStatus(),
-                  color: Color(AppColors.secondaryTeal),
+                  color: theme.colorScheme.secondary,
                 ),
               ),
             ],
@@ -610,6 +610,7 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -640,7 +641,7 @@ class _SummaryCard extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              color: Colors.grey[600],
+              color: theme.textTheme.bodySmall?.color ?? Colors.grey[600],
               fontSize: 12,
               fontWeight: FontWeight.w500,
             ),
