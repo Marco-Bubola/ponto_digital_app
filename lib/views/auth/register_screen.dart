@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../../utils/constants.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -46,7 +47,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       // Usar CPF dinâmico e companyId fixo para teste
       String companyId = '6510e1e2e2e2e2e2e2e2e2e2';
 
-  final url = Uri.parse('http://127.0.0.1:3000/api/auth/register');
+  final url = Uri.parse('${AppConstants.apiBase}/api/auth/register');
       final body = {
         'name': _name,
         'email': _email,
