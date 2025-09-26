@@ -64,7 +64,7 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
   Future<void> _loadRequestsFromApi() async {
     try {
       final token = await SessionService.getToken();
-      final uri = Uri.parse('http://localhost:3000/api/adjustments');
+  final uri = Uri.parse('${AppConstants.apiBase}/api/adjustments');
       final resp = await http.get(uri, headers: { if (token != null) 'Authorization': 'Bearer $token' });
       if (resp.statusCode == 200) {
         final body = json.decode(resp.body);
@@ -107,7 +107,7 @@ class _AdjustmentsScreenState extends State<AdjustmentsScreen>
     setState(() => _isSending = true);
     try {
       final token = await SessionService.getToken();
-      final uri = Uri.parse('http://localhost:3000/api/adjustments');
+  final uri = Uri.parse('${AppConstants.apiBase}/api/adjustments');
       http.Response resp;
       if (_pickedFilePath != null && _pickedFilePath!.isNotEmpty) {
         // send multipart with file
