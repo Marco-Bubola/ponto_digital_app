@@ -26,10 +26,7 @@ class PontoDigitalApp extends StatelessWidget {
         return MaterialApp(
           title: 'Ponto Digital',
           theme: AppTheme.lightTheme,
-          darkTheme: ThemeData.dark().copyWith(
-            useMaterial3: true,
-            // You can further customize dark theme to match branding
-          ),
+          darkTheme: AppTheme.darkTheme,
           themeMode: mode,
           home: const LoginScreen(),
           debugShowCheckedModeBanner: false,
