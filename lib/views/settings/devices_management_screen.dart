@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../../services/session_service.dart';
 import '../../services/device_service.dart';
 import '../../utils/constants.dart';
+import '../../theme.dart';
 
 class DevicesManagementScreen extends StatefulWidget {
   const DevicesManagementScreen({super.key});
@@ -21,14 +22,15 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
   @override
   void initState() {
     super.initState();
-    _loadDevices();
-    // obter deviceId local para destacar na lista
-    DeviceService.getDeviceId().then((id) {
-      if (mounted) setState(() => _currentDeviceId = id);
-    });
+    _init();
   }
 
-  Future<void> _loadDevices() async {
+  Future<void> _init() async {
+    _currentDeviceId = await DeviceService.getDeviceId();
+    await _fetchDevices();
+  }
+
+  Future<void> _fetchDevices() async {
     setState(() {
       _isLoading = true;
       _error = null;
@@ -36,28 +38,22 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
 
     try {
       final token = await SessionService.getToken();
-      final uri = Uri.parse('http://localhost:3000/api/users/devices');
-      final resp = await http.get(uri, headers: {
-        if (token != null) 'Authorization': 'Bearer $token',
-      });
+      if (token == null) throw Exception('Usuário não autenticado');
 
-      if (resp.statusCode == 200) {
-        final body = json.decode(resp.body) as Map<String, dynamic>;
-        if (!mounted) return;
-        setState(() {
-          _devices = (body['devices'] as List<dynamic>?) ?? [];
-          _isLoading = false;
-        });
-      } else {
-        if (!mounted) return;
-        setState(() {
-          _error = 'Erro ao carregar dispositivos: ${resp.statusCode}';
-          _isLoading = false;
-        });
-      }
+  final uri = Uri.parse('${AppConstants.apiBase}/api/users/devices');
+  final resp = await http.get(uri, headers: {'Authorization': 'Bearer $token'});
+      if (resp.statusCode != 200) throw Exception('Falha ao carregar dispositivos (${resp.statusCode})');
+
+      final body = json.decode(resp.body);
+      setState(() {
+        _devices = (body is List) ? body : (body['devices'] ?? []);
+      });
     } catch (e) {
       setState(() {
-        _error = 'Falha de conexão';
+        _error = e.toString();
+      });
+    } finally {
+      setState(() {
         _isLoading = false;
       });
     }
@@ -66,61 +62,68 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
   Future<void> _removeDevice(String deviceId) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (context) => AlertDialog(
         title: const Text('Remover dispositivo'),
-        content: const Text('Deseja realmente remover este dispositivo autorizado? Ele perderá acesso à sua conta.'),
+        content: const Text('Tem certeza que deseja remover este dispositivo?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Remover')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remover')),
         ],
       ),
     );
 
-    if (!mounted) return;
     if (confirm != true) return;
+
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
       final token = await SessionService.getToken();
-      final uri = Uri.parse('http://localhost:3000/api/users/devices/$deviceId');
-      final resp = await http.delete(uri, headers: {
-        if (token != null) 'Authorization': 'Bearer $token',
-      });
+      if (token == null) throw Exception('Usuário não autenticado');
 
-      if (resp.statusCode == 200) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dispositivo removido')));
-        await _loadDevices();
-      } else {
-        final body = resp.body;
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao remover: ${resp.statusCode} - $body')));
-      }
+  final uri = Uri.parse('${AppConstants.apiBase}/api/users/devices/$deviceId');
+  final resp = await http.delete(uri, headers: {'Authorization': 'Bearer $token'});
+      if (resp.statusCode != 200) throw Exception('Falha ao remover dispositivo (${resp.statusCode})');
+
+      // Recarregar lista
+      await _fetchDevices();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falha de conexão')));
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
-          gradient: LinearGradient(
+            gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(AppColors.primaryBlue).withValues(alpha: 0.08),
-              Colors.white,
+              theme.colorScheme.primary.withValues(alpha: 0.06),
+              theme.scaffoldBackgroundColor,
             ],
           ),
         ),
         child: SafeArea(
           child: Column(
             children: [
-              // Header moderno com botão voltar
+              // Header moderno com botão voltar (mantido como solicitado)
               Container(
                 margin: const EdgeInsets.all(20),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
@@ -131,7 +134,7 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Color(AppColors.primaryBlue).withValues(alpha: 0.2),
+                      color: Color(AppColors.primaryBlue).withValues(alpha: 0.18),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -146,7 +149,7 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                         padding: const EdgeInsets.all(8),
                         margin: const EdgeInsets.only(right: 12),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.12),
+                          color: theme.colorScheme.onPrimary.withValues(alpha: 0.12),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.arrow_back, color: Colors.white),
@@ -156,7 +159,7 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
+                        color: theme.colorScheme.onPrimary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.devices_rounded, color: Colors.white, size: 28),
@@ -198,11 +201,11 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                                     return Container(
                                       margin: const EdgeInsets.only(bottom: 12),
                                       decoration: BoxDecoration(
-                                        color: Colors.white,
+                                        color: theme.cardColor,
                                         borderRadius: BorderRadius.circular(12),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.grey.withValues(alpha: 0.06),
+                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.04),
                                             blurRadius: 8,
                                             offset: const Offset(0, 2),
                                           ),
@@ -214,8 +217,8 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                                           decoration: BoxDecoration(
                                             gradient: LinearGradient(
                                               colors: [
-                                                Color(AppColors.secondaryTeal),
-                                                Color(AppColors.primaryBlue),
+                                                theme.colorScheme.secondary,
+                                                theme.colorScheme.primary,
                                               ],
                                             ),
                                             borderRadius: BorderRadius.circular(10),
@@ -224,25 +227,25 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                                         ),
                                         title: Row(
                                           children: [
-                                            Expanded(child: Text(deviceName, style: const TextStyle(fontWeight: FontWeight.w600))),
+                                            Expanded(child: Text(deviceName, style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface))),
                                             if (isCurrent)
                                               Container(
                                                 margin: const EdgeInsets.only(left: 8),
                                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                                 decoration: BoxDecoration(
-                                                  color: Color(AppColors.successGreen).withValues(alpha: 0.08),
+                                                  color: theme.successColor.withValues(alpha: 0.08),
                                                   borderRadius: BorderRadius.circular(12),
-                                                  border: Border.all(color: Color(AppColors.successGreen).withValues(alpha: 0.16)),
+                                                    border: Border.all(color: theme.successColor.withValues(alpha: 0.16)),
                                                 ),
-                                                child: Text('Este dispositivo', style: TextStyle(color: Color(AppColors.successGreen), fontSize: 12)),
+                                                child: Text('Este dispositivo', style: TextStyle(color: theme.successColor, fontSize: 12)),
                                               ),
                                           ],
                                         ),
-                                        subtitle: Text(deviceId, style: TextStyle(color: Colors.grey[700])),
+                                        subtitle: Text(deviceId, style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
                                         trailing: isCurrent
-                                            ? Icon(Icons.check_circle, color: Color(AppColors.successGreen))
+                                            ? Icon(Icons.check_circle, color: theme.successColor)
                                             : IconButton(
-                                                icon: const Icon(Icons.delete_outline),
+                                                icon: Icon(Icons.delete_outline, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
                                                 onPressed: () => _removeDevice(deviceId),
                                               ),
                                       ),
