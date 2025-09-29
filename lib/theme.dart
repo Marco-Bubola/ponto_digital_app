@@ -1,63 +1,114 @@
 import 'package:flutter/material.dart';
-import 'utils/constants.dart';
+
+// Paleta de cores moderna com tonalidade verde
+class ModernGreenPalette {
+  // Tons principais de verde
+  static const int primaryGreen = 0xFF10B981; // Emerald 500
+  static const int primaryGreenLight = 0xFF34D399; // Emerald 400  
+  static const int primaryGreenDark = 0xFF059669; // Emerald 600
+  
+  // Tons secundários (verde azulado)
+  static const int secondaryTeal = 0xFF14B8A6; // Teal 500
+  static const int secondaryTealLight = 0xFF5EEAD4; // Teal 300
+  static const int secondaryTealDark = 0xFF0F766E; // Teal 700
+  
+  // Tons de acento (verde lima)
+  static const int accentLime = 0xFF84CC16; // Lime 500
+  static const int accentLimeLight = 0xFFA3E635; // Lime 400
+  
+  // Tons neutros modernos
+  static const int neutralGray50 = 0xFFF9FAFB;
+  static const int neutralGray100 = 0xFFF3F4F6;
+  static const int neutralGray200 = 0xFFE5E7EB;
+  static const int neutralGray300 = 0xFFD1D5DB;
+  static const int neutralGray600 = 0xFF4B5563;
+  static const int neutralGray800 = 0xFF1F2937;
+  static const int neutralGray900 = 0xFF111827;
+  
+  // Status colors
+  static const int successGreen = 0xFF22C55E; // Green 500
+  static const int warningAmber = 0xFFF59E0B; // Amber 500
+  static const int errorRed = 0xFFEF4444; // Red 500
+}
 
 class AppTheme {
   static ThemeData get lightTheme {
+    final colorScheme = ColorScheme.light(
+      primary: const Color(ModernGreenPalette.primaryGreen),
+      primaryContainer: const Color(ModernGreenPalette.primaryGreenLight),
+      secondary: const Color(ModernGreenPalette.secondaryTeal),
+      secondaryContainer: const Color(ModernGreenPalette.secondaryTealLight),
+      tertiary: const Color(ModernGreenPalette.accentLime),
+      surface: const Color(ModernGreenPalette.neutralGray50),
+      surfaceContainerHighest: const Color(ModernGreenPalette.neutralGray100),
+      onPrimary: Colors.white,
+      onSecondary: Colors.white,
+      onTertiary: Colors.white,
+      onSurface: const Color(ModernGreenPalette.neutralGray900),
+      outline: const Color(ModernGreenPalette.neutralGray300),
+      error: const Color(ModernGreenPalette.errorRed),
+    );
+
     return ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: Color(AppColors.primaryBlue),
-        brightness: Brightness.light,
-      ),
+      colorScheme: colorScheme,
       
-      // Cores customizadas baseadas na documentação
-      primaryColor: Color(AppColors.primaryBlue),
-      scaffoldBackgroundColor: Color(AppColors.lightGray),
+      // Cores customizadas
+      primaryColor: const Color(ModernGreenPalette.primaryGreen),
+      scaffoldBackgroundColor: const Color(ModernGreenPalette.neutralGray50),
       
       // Tipografia - Fonte Inter
       fontFamily: 'Inter',
-      textTheme: const TextTheme(
+      textTheme: TextTheme(
         headlineLarge: TextStyle(
           fontSize: 32,
           fontWeight: FontWeight.bold,
           letterSpacing: -0.5,
+          color: colorScheme.onSurface,
         ),
         headlineMedium: TextStyle(
           fontSize: 28,
           fontWeight: FontWeight.bold,
           letterSpacing: -0.25,
+          color: colorScheme.onSurface,
         ),
         headlineSmall: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w600,
+          color: colorScheme.onSurface,
         ),
         titleLarge: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
+          color: colorScheme.onSurface,
         ),
         titleMedium: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w500,
+          color: colorScheme.onSurface,
         ),
         bodyLarge: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.normal,
+          color: colorScheme.onSurface,
         ),
         bodyMedium: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.normal,
+          color: colorScheme.onSurface,
         ),
         labelLarge: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
+          color: colorScheme.onSurface,
         ),
       ),
       
       // Botões
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: Color(AppColors.primaryBlue),
-          foregroundColor: Color(AppColors.white),
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
           elevation: 2,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape: RoundedRectangleBorder(
@@ -68,8 +119,8 @@ class AppTheme {
       
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: Color(AppColors.primaryBlue),
-          side: BorderSide(color: Color(AppColors.primaryBlue)),
+          foregroundColor: colorScheme.primary,
+          side: BorderSide(color: colorScheme.primary),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -80,22 +131,22 @@ class AppTheme {
       // Campos de texto
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Color(AppColors.white),
+        fillColor: colorScheme.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Color(AppColors.neutralGray)),
+          borderSide: BorderSide(color: colorScheme.outline),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Color(AppColors.neutralGray)),
+          borderSide: BorderSide(color: colorScheme.outline),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Color(AppColors.primaryBlue), width: 2),
+          borderSide: BorderSide(color: colorScheme.primary, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Color(AppColors.errorRed)),
+          borderSide: BorderSide(color: colorScheme.error),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
@@ -106,26 +157,26 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        color: Color(AppColors.white),
+        color: colorScheme.surfaceContainerHighest,
       ),
       
       // AppBar
       appBarTheme: AppBarTheme(
-        backgroundColor: Color(AppColors.primaryBlue),
-        foregroundColor: Color(AppColors.white),
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: const TextStyle(
+        titleTextStyle: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
-          color: Colors.white,
+          color: colorScheme.onPrimary,
         ),
       ),
       
       // FloatingActionButton
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: Color(AppColors.primaryBlue),
-        foregroundColor: Color(AppColors.white),
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
         elevation: 4,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -135,71 +186,88 @@ class AppTheme {
   }
 
   static ThemeData get darkTheme {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: Color(AppColors.primaryBlue),
-      brightness: Brightness.dark,
+    final colorScheme = ColorScheme.dark(
+      primary: const Color(ModernGreenPalette.primaryGreenLight),
+      primaryContainer: const Color(ModernGreenPalette.primaryGreenDark),
+      secondary: const Color(ModernGreenPalette.secondaryTealLight),
+      secondaryContainer: const Color(ModernGreenPalette.secondaryTealDark),
+      tertiary: const Color(ModernGreenPalette.accentLimeLight),
+      surface: const Color(ModernGreenPalette.neutralGray900),
+      surfaceContainerHighest: const Color(ModernGreenPalette.neutralGray800),
+      onPrimary: const Color(ModernGreenPalette.neutralGray900),
+      onSecondary: const Color(ModernGreenPalette.neutralGray900),
+      onTertiary: const Color(ModernGreenPalette.neutralGray900),
+      onSurface: const Color(ModernGreenPalette.neutralGray100),
+      outline: const Color(ModernGreenPalette.neutralGray600),
+      error: const Color(ModernGreenPalette.errorRed),
     );
 
     return ThemeData(
       useMaterial3: true,
-      colorScheme: scheme,
-      primaryColor: scheme.primary,
-      // Make scaffold background clearly darker than card surface to improve contrast
-      scaffoldBackgroundColor: const Color(0xFF07101A),
+      colorScheme: colorScheme,
+      primaryColor: colorScheme.primary,
+      scaffoldBackgroundColor: const Color(0xFF0A0E13), // Mais escuro que surface para contraste
       fontFamily: 'Inter',
-      textTheme: const TextTheme(
+      textTheme: TextTheme(
         headlineLarge: TextStyle(
           fontSize: 32,
           fontWeight: FontWeight.bold,
           letterSpacing: -0.5,
+          color: colorScheme.onSurface,
         ),
         headlineMedium: TextStyle(
           fontSize: 28,
           fontWeight: FontWeight.bold,
           letterSpacing: -0.25,
+          color: colorScheme.onSurface,
         ),
         headlineSmall: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w600,
+          color: colorScheme.onSurface,
         ),
         titleLarge: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
+          color: colorScheme.onSurface,
         ),
         titleMedium: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w500,
+          color: colorScheme.onSurface,
         ),
         bodyLarge: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.normal,
+          color: colorScheme.onSurface,
         ),
         bodyMedium: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.normal,
+          color: colorScheme.onSurface,
         ),
         labelLarge: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
+          color: colorScheme.onSurface,
         ),
       ),
       cardTheme: CardThemeData(
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-  // Use surfaceContainerHighest so cards pop over the darker scaffold
-  color: scheme.surfaceContainerHighest,
+        color: colorScheme.surfaceContainerHighest,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: scheme.surface,
-        foregroundColor: scheme.onSurface,
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: scheme.onSurface),
+        titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: scheme.primary,
-          foregroundColor: scheme.onPrimary,
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
           elevation: 2,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -209,12 +277,12 @@ class AppTheme {
   }
 }
 
-// Cores de status para estados do app
+// Cores de status para estados do app (atualizadas para verde moderno)
 class StatusColors {
-  static const Color success = Color(AppColors.successGreen);
-  static const Color warning = Color(AppColors.warningYellow);
-  static const Color error = Color(AppColors.errorRed);
-  static const Color info = Color(AppColors.primaryBlue);
+  static const Color success = Color(ModernGreenPalette.successGreen);
+  static const Color warning = Color(ModernGreenPalette.warningAmber);
+  static const Color error = Color(ModernGreenPalette.errorRed);
+  static const Color info = Color(ModernGreenPalette.primaryGreen);
 }
 
 // Espaçamentos padronizados
@@ -237,11 +305,10 @@ class AppRadius {
 
 // Helper extension to expose theme-aware status colors
 extension AppThemeHelpers on ThemeData {
-  /// Warning color adapted for current brightness. In dark mode it's blended with surface to reduce harsh contrast.
+  /// Warning color adapted for current brightness
   Color get warningColor {
-    final base = Color(AppColors.warningYellow);
+    const base = Color(ModernGreenPalette.warningAmber);
     if (brightness == Brightness.dark) {
-      // blend with surface to make it less saturated in dark mode
       return Color.alphaBlend(base.withValues(alpha: 0.85), colorScheme.surface);
     }
     return base;
@@ -249,14 +316,14 @@ extension AppThemeHelpers on ThemeData {
 
   /// Success color (green)
   Color get successColor {
-    final base = Color(AppColors.successGreen);
+    const base = Color(ModernGreenPalette.successGreen);
     if (brightness == Brightness.dark) return Color.alphaBlend(base.withValues(alpha: 0.95), colorScheme.surface);
     return base;
   }
 
   /// Error color (red)
   Color get errorColor {
-    final base = Color(AppColors.errorRed);
+    const base = Color(ModernGreenPalette.errorRed);
     if (brightness == Brightness.dark) return Color.alphaBlend(base.withValues(alpha: 0.95), colorScheme.surface);
     return base;
   }
