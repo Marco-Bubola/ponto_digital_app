@@ -227,13 +227,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         ),
                                       )
                                     : Text(
-                                        _userName,
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: Theme.of(context).colorScheme.onPrimary,
+                                          _userName,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
                                         ),
-                                      ),
                                   const SizedBox(height: 4),
                                   _isLoading
                                     ? SizedBox(
@@ -244,22 +244,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.8)),
                                         ),
                                       )
-                                    : Text(
-                                        _userEmail,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.85),
-                                        ),
-                                      ),
+                                         : Text(
+                                             _userEmail,
+                                             style: TextStyle(
+                                               fontSize: 14,
+                                               color: Colors.white.withValues(alpha: 0.9),
+                                             ),
+                                           ),
                                   if (_companyName.isNotEmpty && !_isLoading) ...[
                                     const SizedBox(height: 4),
-                                    Text(
-                                      _companyName,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.7),
-                                      ),
-                                    ),
+                                         Text(
+                                           _companyName,
+                                           style: TextStyle(
+                                             fontSize: 12,
+                                             color: Colors.white.withValues(alpha: 0.8),
+                                           ),
+                                         ),
                                   ],
                                 ],
                               ),
