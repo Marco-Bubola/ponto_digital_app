@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../notifications/notifications_screen.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
@@ -21,6 +22,75 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
+class _ModernBottomNav extends StatelessWidget {
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  const _ModernBottomNav({required this.currentIndex, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+  final bg = theme.colorScheme.surface;
+    final primary = theme.colorScheme.primary;
+    final inactive = theme.colorScheme.onSurface.withValues(alpha: 0.6);
+
+    Widget buildItem({required int index, required IconData icon, required String label}) {
+      final selected = index == currentIndex;
+      return Expanded(
+        child: Semantics(
+          selected: selected,
+          button: true,
+          label: label,
+          child: InkWell(
+            onTap: () => onTap(index),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 260),
+                        width: selected ? 40 : 0,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: selected ? primary.withValues(alpha: 0.14) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      Icon(icon, size: 22, color: selected ? primary : inactive),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(label, style: TextStyle(fontSize: 11, color: selected ? primary : inactive), maxLines: 1, overflow: TextOverflow.ellipsis)
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        decoration: BoxDecoration(color: bg, border: Border(top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.06)))),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(children: [
+          buildItem(index: 0, icon: Icons.dashboard_outlined, label: 'Dashboard'),
+          buildItem(index: 1, icon: Icons.access_time_outlined, label: 'Ponto'),
+          buildItem(index: 2, icon: Icons.history_outlined, label: 'Histórico'),
+          buildItem(index: 3, icon: Icons.settings_outlined, label: 'Configurações'),
+        ]),
+      ),
+    );
+  }
+}
+
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
 
@@ -35,18 +105,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       body: pages[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
+      bottomNavigationBar: _ModernBottomNav(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        selectedItemColor: Theme.of(context).colorScheme.primary,
-        unselectedItemColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), activeIcon: Icon(Icons.dashboard), label: 'Dashboard'),
-          BottomNavigationBarItem(icon: Icon(Icons.access_time_outlined), activeIcon: Icon(Icons.access_time), label: 'Ponto'),
-          BottomNavigationBarItem(icon: Icon(Icons.history_outlined), activeIcon: Icon(Icons.history), label: 'Histórico'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), activeIcon: Icon(Icons.settings), label: 'Configurações'),
-        ],
+        onTap: (i) => setState(() => _currentIndex = i),
       ),
     );
   }
@@ -349,9 +410,9 @@ class _DashboardContentState extends State<DashboardContent> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          Color(AppColors.primaryBlue).withValues(alpha: 0.92),
-                          Color(AppColors.primaryBlue).withValues(alpha: 0.7),
-                          Color(AppColors.secondaryTeal).withValues(alpha: 0.12),
+                          theme.colorScheme.primary.withValues(alpha: 0.92),
+                          theme.colorScheme.primary.withValues(alpha: 0.7),
+                          theme.colorScheme.secondary.withValues(alpha: 0.12),
                         ],
                       ),
                     ),
@@ -386,7 +447,16 @@ class _DashboardContentState extends State<DashboardContent> {
                                 ),
                                 Container(
                                   decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: 0.06))),
-                                  child: IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.white), onPressed: () {}),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                                    onPressed: () {
+                                      // Abrir tela de notificações
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(builder: (c) => const NotificationsScreen()),
+                                      );
+                                    },
+                                  ),
                                 ),
                               ],
                             ),
@@ -475,13 +545,13 @@ class _DashboardContentState extends State<DashboardContent> {
                           child: LayoutBuilder(builder: (context, constraints) {
                             final spacing = 12.0;
                             return Row(children: [
-                              Expanded(child: _WeekStatCard(title: 'Horas\nTrabalhadas', value: weekHours, icon: Icons.schedule_rounded, color: Color(AppColors.primaryBlue))),
+                              Expanded(child: _WeekStatCard(title: 'Horas\nTrabalhadas', value: weekHours, icon: Icons.schedule_rounded, color: theme.colorScheme.primary)),
                               SizedBox(width: spacing),
-                              Expanded(child: _WeekStatCard(title: 'Dias\nPresentes', value: daysPresent, icon: Icons.check_circle_rounded, color: Color(AppColors.successGreen))),
+                              Expanded(child: _WeekStatCard(title: 'Dias\nPresentes', value: daysPresent, icon: Icons.check_circle_rounded, color: theme.successColor)),
                               SizedBox(width: spacing),
-                              Expanded(child: _WeekStatCard(title: 'Horas\nExtras', value: overtime, icon: Icons.trending_up_rounded, color: Theme.of(context).warningColor)),
+                              Expanded(child: _WeekStatCard(title: 'Horas\nExtras', value: overtime, icon: Icons.trending_up_rounded, color: theme.warningColor)),
                               SizedBox(width: spacing),
-                              Expanded(child: _WeekStatCard(title: 'Saldo de\nHoras', value: balance, icon: Icons.account_balance_rounded, color: Color(AppColors.secondaryTeal))),
+                              Expanded(child: _WeekStatCard(title: 'Saldo de\nHoras', value: balance, icon: Icons.account_balance_rounded, color: theme.colorScheme.secondary)),
                             ]);
                           }),
                         ),
