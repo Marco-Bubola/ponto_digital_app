@@ -7,6 +7,8 @@ import '../../utils/constants.dart';
 import '../../theme.dart';
 import '../../services/session_service.dart';
 import '../../widgets/modern_record_card.dart';
+import '../../services/notification_service.dart';
+import '../../services/push_service.dart';
 
 class TimecardScreen extends StatefulWidget {
   const TimecardScreen({super.key});
@@ -366,6 +368,19 @@ class _TimecardScreenState extends State<TimecardScreen> {
           _lastRecordTitle = '${_getTypeDisplayName(type)} - $ts';
           _lastRecordStatus = 'Confirmado';
         });
+        // Atualizar notificação persistente/central
+        try {
+          final svc = await NotificationService.getInstance();
+          final text = _buildNotificationTextForType(type);
+          // adicionar registro no centro de notificações também
+          await svc.addLocalFromPayload(title: _getTypeDisplayName(type), body: text);
+          // atualizar notificação persistente (usando id 1000)
+          if (type == TimeRecordType.saida) {
+            await PushService.cancelNotification(1000);
+          } else {
+            await PushService.showOngoingNotification(id: 1000, title: 'Jornada', body: text);
+          }
+        } catch (_) {}
       }
     } catch (error) {
       if (mounted) {
@@ -387,6 +402,20 @@ class _TimecardScreenState extends State<TimecardScreen> {
           _currentAction = null;
         });
       }
+    }
+  }
+
+  String _buildNotificationTextForType(TimeRecordType type) {
+    final now = DateTime.now();
+    switch (type) {
+      case TimeRecordType.entrada:
+        return 'Trabalhando desde ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      case TimeRecordType.pausa:
+        return 'Em pausa desde ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      case TimeRecordType.retorno:
+        return 'Retornou ao trabalho às ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      case TimeRecordType.saida:
+        return 'Ponto finalizado às ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     }
   }
 
@@ -673,26 +702,26 @@ class _TimecardScreenState extends State<TimecardScreen> {
                       ),
                     ],
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.onPrimary.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Icon(
-                                  Icons.fingerprint_rounded,
-                                  color: Colors.white,
-                                  size: 32,
-                                ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.onPrimary.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                            const SizedBox(width: 12),
-                            Column(
+                            child: Icon(
+                                Icons.fingerprint_rounded,
+                                color: Colors.white,
+                                size: 32,
+                              ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
@@ -703,67 +732,70 @@ class _TimecardScreenState extends State<TimecardScreen> {
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        _getFormattedDate(),
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 13,
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _getFormattedDate(),
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    if (_entradaBadgeText() != null) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: theme.colorScheme.onPrimary.withValues(alpha: 0.14),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          _entradaBadgeText()!,
+                                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
-                                      // Badge de entrada (a partir da 2ª entrada)
-                                      if (_entradaBadgeText() != null)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: theme.colorScheme.onPrimary.withValues(alpha: 0.14),
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                            child: Text(
-                                            _entradaBadgeText()!,
-                                            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
-                                          ),
-                                        ),
                                     ],
-                                  ),
+                                  ],
+                                ),
                               ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-
-                      // Horário atual alinhado à direita
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.onPrimary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: theme.colorScheme.onPrimary.withValues(alpha: 0.18)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              'Horário',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
+                      const SizedBox(height: 12),
+                      // Horário atual centralizado abaixo
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.onPrimary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: theme.colorScheme.onPrimary.withValues(alpha: 0.18)),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                'Horário Atual',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              _currentTime,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 24,
-                                fontFeatures: [FontFeature.tabularFigures()],
+                              const SizedBox(height: 4),
+                              Text(
+                                _currentTime,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 28,
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -927,29 +959,26 @@ class _TimecardScreenState extends State<TimecardScreen> {
                 // Botões de ação modernos em linha única com validações de fluxo
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: TimeRecordType.values.map((type) {
-                    final enabled = _isButtonEnabled(type);
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                        child: Tooltip(
-                          message: enabled ? _getTypeDisplayName(type) : _disabledReason(type),
-                          child: Opacity(
-                            opacity: enabled ? 1.0 : 0.45,
-                            child: _ModernTimecardButton(
-                              type: type,
-                              emoji: _getTypeEmoji(type),
-                              icon: _getTypeIcon(type),
-                              label: _getTypeDisplayName(type),
-                              color: _getTypeColor(type),
-                              isEnabled: enabled,
-                              onPressed: enabled ? () => _recordTimecard(type) : null,
+                  children: TimeRecordType.values
+                      .where((type) => _isButtonEnabled(type))
+                      .map((type) => Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                              child: Tooltip(
+                                message: _getTypeDisplayName(type),
+                                child: _ModernTimecardButton(
+                                  type: type,
+                                  emoji: _getTypeEmoji(type),
+                                  icon: _getTypeIcon(type),
+                                  label: _getTypeDisplayName(type),
+                                  color: _getTypeColor(type),
+                                  isEnabled: true,
+                                  onPressed: () => _recordTimecard(type),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                          ))
+                      .toList(),
                 ),
                 const SizedBox(height: 20),
 
@@ -1091,14 +1120,14 @@ class _ModernTimecardButton extends StatelessWidget {
             : LinearGradient(
                 colors: [Theme.of(context).colorScheme.surface, Theme.of(context).colorScheme.surfaceContainerHighest],
               ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: isEnabled
             ? [
                 BoxShadow(
-                  color: color.withValues(alpha: 0.3),
-                  spreadRadius: 1,
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+                  color: color.withValues(alpha: 0.18),
+                  spreadRadius: 0.5,
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
                 ),
               ]
             : null,
@@ -1107,31 +1136,34 @@ class _ModernTimecardButton extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: isEnabled ? onPressed : null,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(14),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   emoji,
-                  style: const TextStyle(fontSize: 32),
+                  style: const TextStyle(fontSize: 22),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Icon(
                   icon,
                   color: Theme.of(context).colorScheme.onPrimary,
-                  size: 32,
+                  size: 22,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 6),
                 Text(
                   label,
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
