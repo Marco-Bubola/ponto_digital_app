@@ -69,7 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(errorData['error'] ?? 'Erro no login'),
-              backgroundColor: Color(AppColors.errorRed),
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
         }
@@ -79,7 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro de conexão: $error'),
-            backgroundColor: Color(AppColors.errorRed),
+            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
@@ -94,6 +94,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -101,9 +104,9 @@ class _LoginScreenState extends State<LoginScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(AppColors.primaryBlue),
-              Color.fromARGB(204, (AppColors.primaryBlue >> 16) & 0xFF, (AppColors.primaryBlue >> 8) & 0xFF, AppColors.primaryBlue & 0xFF),
-              Color(AppColors.secondaryTeal),
+              cs.primary,
+              cs.primary.withValues(alpha: 0.8),
+              cs.secondary,
             ],
           ),
         ),
@@ -123,14 +126,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          Colors.white,
-                          Color.fromARGB(230, 255, 255, 255),
+                          cs.surface,
+                          cs.surface.withValues(alpha: 0.95),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(32),
                       boxShadow: [
                         BoxShadow(
-                          color: Color.fromARGB(51, 0, 0, 0),
+                          color: theme.shadowColor.withValues(alpha: 0.12),
                           spreadRadius: 2,
                           blurRadius: 20,
                           offset: const Offset(0, 8),
@@ -140,15 +143,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Icon(
                       Icons.fingerprint_rounded,
                       size: 80,
-                      color: Color(AppColors.primaryBlue),
+                      color: cs.primary,
                     ),
                   ),
                   const SizedBox(height: 32),
                   
                   Text(
                     'Ponto Digital',
-                    style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                      color: Colors.white,
+                    style: theme.textTheme.headlineLarge?.copyWith(
+                      color: cs.onPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 36,
                     ),
@@ -157,8 +160,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   
                   Text(
                     'Controle de jornada inteligente 🚀',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Color.fromARGB(230, 255, 255, 255),
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                      color: cs.onPrimary.withValues(alpha: 0.95),
                       fontSize: 16,
                     ),
                   ),
@@ -167,11 +170,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   // Formulário de login moderno
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: theme.cardColor,
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Color.fromARGB(26, 0, 0, 0),
+                          color: theme.shadowColor.withValues(alpha: 0.06),
                           spreadRadius: 1,
                           blurRadius: 20,
                           offset: const Offset(0, 8),
@@ -189,14 +192,14 @@ class _LoginScreenState extends State<LoginScreen> {
                               children: [
                                 Icon(
                                   Icons.login_rounded,
-                                  color: Color(AppColors.primaryBlue),
+                                  color: cs.primary,
                                   size: 28,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
                                   'Faça seu login',
-                                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                    color: Color(AppColors.darkGray),
+                                  style: theme.textTheme.headlineSmall?.copyWith(
+                                    color: theme.textTheme.headlineSmall?.color,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -207,9 +210,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             // Campo de email moderno
                             Container(
                               decoration: BoxDecoration(
-                                color: Colors.grey[50],
+                                color: theme.colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.grey[200]!),
+                                border: Border.all(color: theme.dividerColor),
                               ),
                               child: TextFormField(
                                 controller: _emailController,
@@ -219,7 +222,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   hintText: 'seu.email@empresa.com',
                                   prefixIcon: Icon(
                                     Icons.email_rounded,
-                                    color: Color(AppColors.primaryBlue),
+                                    color: cs.primary,
                                   ),
                                   border: InputBorder.none,
                                   contentPadding: const EdgeInsets.all(20),
@@ -240,9 +243,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             // Campo de senha moderno
                             Container(
                               decoration: BoxDecoration(
-                                color: Colors.grey[50],
+                                color: theme.colorScheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.grey[200]!),
+                                border: Border.all(color: theme.dividerColor),
                               ),
                               child: TextFormField(
                                 controller: _passwordController,
@@ -252,14 +255,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                   hintText: 'Digite sua senha',
                                   prefixIcon: Icon(
                                     Icons.lock_rounded,
-                                    color: Color(AppColors.primaryBlue),
+                                    color: cs.primary,
                                   ),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscurePassword
                                           ? Icons.visibility_rounded
                                           : Icons.visibility_off_rounded,
-                                      color: Color(AppColors.neutralGray),
+                                      color: theme.iconTheme.color?.withValues(alpha: 0.9),
                                     ),
                                     onPressed: () {
                                       setState(() {
@@ -289,14 +292,14 @@ class _LoginScreenState extends State<LoginScreen> {
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: [
-                                    Color(AppColors.primaryBlue),
-                                    Color(AppColors.secondaryTeal),
+                                    cs.primary,
+                                    cs.secondary,
                                   ],
                                 ),
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Color.fromARGB(77, (AppColors.primaryBlue >> 16) & 0xFF, (AppColors.primaryBlue >> 8) & 0xFF, AppColors.primaryBlue & 0xFF),
+                                    color: theme.shadowColor.withValues(alpha: 0.12),
                                     spreadRadius: 1,
                                     blurRadius: 8,
                                     offset: const Offset(0, 4),
@@ -310,31 +313,31 @@ class _LoginScreenState extends State<LoginScreen> {
                                   borderRadius: BorderRadius.circular(16),
                                   child: Center(
                                     child: _isLoading
-                                        ? const SizedBox(
+                                            ? SizedBox(
                                             height: 24,
                                             width: 24,
                                             child: CircularProgressIndicator(
                                               strokeWidth: 2,
-                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                              valueColor: AlwaysStoppedAnimation<Color>(cs.onPrimary),
                                             ),
                                           )
                                         : Row(
                                             mainAxisAlignment: MainAxisAlignment.center,
                                             children: [
-                                              const Icon(
-                                                Icons.login_rounded,
-                                                color: Colors.white,
-                                                size: 24,
-                                              ),
-                                              const SizedBox(width: 8),
-                                              const Text(
-                                                'Entrar',
-                                                style: TextStyle(
+                                               Icon(
+                                                 Icons.login_rounded,
+                                                 color: cs.onPrimary,
+                                                 size: 24,
+                                               ),
+                                               const SizedBox(width: 8),
+                                               const Text(
+                                                 'Entrar',
+                                                 style: TextStyle(
                                                   color: Colors.white,
                                                   fontSize: 18,
                                                   fontWeight: FontWeight.bold,
                                                 ),
-                                              ),
+                                               ),
                                             ],
                                           ),
                                   ),
@@ -355,7 +358,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         Text('Funcionalidade em desenvolvimento'),
                                       ],
                                     ),
-                                    backgroundColor: Color(AppColors.warningYellow),
+                                    backgroundColor: cs.secondaryContainer,
                                     behavior: SnackBarBehavior.floating,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
@@ -365,13 +368,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               },
                               icon: Icon(
                                 Icons.help_outline_rounded,
-                                color: Color(AppColors.primaryBlue),
+                                color: cs.primary,
                                 size: 20,
                               ),
                               label: Text(
                                 'Esqueci minha senha',
                                 style: TextStyle(
-                                  color: Color(AppColors.primaryBlue),
+                                  color: cs.primary,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -387,13 +390,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               },
                               icon: Icon(
                                 Icons.person_add_rounded,
-                                color: Color(AppColors.primaryBlue),
+                                color: cs.primary,
                                 size: 20,
                               ),
                               label: Text(
                                 'Cadastre-se',
                                 style: TextStyle(
-                                  color: Color(AppColors.primaryBlue),
+                                  color: cs.primary,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -410,7 +413,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Color.fromARGB(51, 255, 255, 255),
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -418,14 +421,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         Icon(
                           Icons.info_outline_rounded,
-                          color: Color.fromARGB(204, 255, 255, 255),
+                          color: cs.onSurface.withValues(alpha: 0.8),
                           size: 16,
                         ),
                         const SizedBox(width: 8),
                         Text(
                           'Versão ${AppConstants.appVersion}',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Color.fromARGB(204, 255, 255, 255),
+                            color: cs.onSurface.withValues(alpha: 0.8),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
