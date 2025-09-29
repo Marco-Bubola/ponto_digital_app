@@ -11,7 +11,14 @@ dependencies:
     sdk: flutter
   http: ^1.5.0
   shared_preferences: ^2.0.15
+  firebase_core: ^2.10.0
+  firebase_messaging: ^14.4.0
+  flutter_local_notifications: ^19.4.2
   intl: ^0.18.1
+  uuid: ^4.5.1
+
+  # Linux implementation for flutter_local_notifications (explicit)
+  flutter_local_notifications_linux: ^6.0.0
   file_picker: ^10.3.3
   fl_chart: ^1.1.1
   path_provider: ^2.0.15
