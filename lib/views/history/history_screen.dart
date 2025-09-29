@@ -569,24 +569,6 @@ class _ModernDaySummary extends StatelessWidget {
                   color: theme.warningColor,
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _SummaryCard(
-                  icon: Icons.check_circle_rounded,
-                  title: 'Registros',
-                  value: '${records.length}',
-                  color: theme.successColor,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _SummaryCard(
-                  icon: Icons.trending_up_rounded,
-                  title: 'Status',
-                  value: _calculateStatus(),
-                  color: theme.colorScheme.secondary,
-                ),
-              ),
             ],
           ),
         ],
