@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "200480492761",
+    "project_id": "pontocerto-83e68",
+    "storage_bucket": "pontocerto-83e68.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:200480492761:android:faf323844ab67ad05ac2c8",
+        "android_client_info": {
+          "package_name": "com.example.ponto_digital_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA76h4ZpEGx3BMEDNjdc_eyw4vqFNou660"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
