@@ -502,14 +502,6 @@ class _ModernDaySummary extends StatelessWidget {
     return '${hours}h ${minutes}m';
   }
 
-  String _calculateStatus() {
-    if (records.isEmpty) return 'Vazio';
-    // Se houver algum registro pendente, o status é Pendente
-    if (records.any((r) => r.status == RecordStatus.pendingAdjustment)) return 'Pendente';
-    // Se houver algum inválido
-    if (records.any((r) => r.status == RecordStatus.invalid)) return 'Incorreto';
-    return 'Completo';
-  }
 
   @override
   Widget build(BuildContext context) {
