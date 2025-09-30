@@ -11,9 +11,11 @@ dependencies:
     sdk: flutter
   http: ^1.5.0
   shared_preferences: ^2.0.15
-  firebase_core: ^2.10.0
-  firebase_messaging: ^14.4.0
+  firebase_core: ^2.32.0
+  firebase_messaging: ^14.7.10
   flutter_local_notifications: ^19.4.2
+  permission_handler: ^11.4.0
+  local_auth: ^2.1.8
   intl: ^0.18.1
   uuid: ^4.5.1
 
