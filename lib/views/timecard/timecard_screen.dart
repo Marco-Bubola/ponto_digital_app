@@ -24,6 +24,10 @@ class _TimecardScreenState extends State<TimecardScreen> {
   String _currentTime = '';
   String _currentLocation = 'Carregando localização...';
   String? _debugDeviceId;
+  // Estado local para notificação de jornada
+  DateTime? _localShiftStart;
+  Duration _localPauseAccumulated = Duration.zero;
+  DateTime? _localOngoingPauseStart;
   // Dados reais do usuário (fallbacks)
   String _lastRecordTitle = 'Nenhum registro';
   String _lastRecordStatus = 'Pendente';
@@ -333,7 +337,23 @@ class _TimecardScreenState extends State<TimecardScreen> {
         throw Exception('Erro backend: ${resp.statusCode} ${resp.body}');
       }
 
-  json.decode(resp.body);
+      Map<String, dynamic>? parsedBody;
+      try {
+        parsedBody = json.decode(resp.body) as Map<String, dynamic>?;
+      } catch (_) {
+        parsedBody = null;
+      }
+      DateTime? serverTimestamp;
+      if (parsedBody != null) {
+        final tsRaw = parsedBody['timestamp'] ?? parsedBody['createdAt'] ?? parsedBody['time'] ?? parsedBody['recordedAt'];
+        if (tsRaw != null) {
+          try {
+            serverTimestamp = DateTime.parse(tsRaw.toString()).toLocal();
+          } catch (_) {
+            serverTimestamp = null;
+          }
+        }
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -375,11 +395,41 @@ class _TimecardScreenState extends State<TimecardScreen> {
           // adicionar registro no centro de notificações também
           await svc.addLocalFromPayload(title: _getTypeDisplayName(type), body: text);
           // atualizar notificação persistente (usando id 1000)
-          if (type == TimeRecordType.saida) {
-            await PushService.cancelNotification(1000);
-          } else {
-            await PushService.showOngoingNotification(id: 1000, title: 'Jornada', body: text);
-          }
+            // Integrar com a notificação de jornada persistente
+            if (type == TimeRecordType.entrada) {
+              // iniciar jornada local e notificação (prefer server timestamp)
+              _localShiftStart = serverTimestamp ?? DateTime.now();
+              _localPauseAccumulated = Duration.zero;
+              _localOngoingPauseStart = null;
+              await PushService.startShiftNotification(start: _localShiftStart!, pauseTotal: _localPauseAccumulated);
+            } else if (type == TimeRecordType.pausa) {
+              // iniciar pausa local e atualizar notificação com ongoingPauseStart (prefer server timestamp)
+              _localOngoingPauseStart = serverTimestamp ?? DateTime.now();
+              await PushService.startShiftNotification(start: _localShiftStart ?? (serverTimestamp ?? DateTime.now()), pauseTotal: _localPauseAccumulated, ongoingPauseStart: _localOngoingPauseStart);
+            } else if (type == TimeRecordType.retorno) {
+              // acumular pausa e continuar - se houver serverTimestamp, use ele para calcular a pausa
+              if (_localOngoingPauseStart != null) {
+                final nowOrServer = serverTimestamp ?? DateTime.now();
+                try {
+                  final delta = nowOrServer.difference(_localOngoingPauseStart!);
+                  if (delta.isNegative == false) {
+                    _localPauseAccumulated += delta;
+                  }
+                } catch (_) {}
+                _localOngoingPauseStart = null;
+              }
+              if (_localShiftStart != null) {
+                await PushService.startShiftNotification(start: _localShiftStart!, pauseTotal: _localPauseAccumulated);
+              }
+            } else if (type == TimeRecordType.saida) {
+              // encerrar jornada e remover notificação
+              _localOngoingPauseStart = null;
+              _localShiftStart = null;
+              _localPauseAccumulated = Duration.zero;
+              await PushService.stopShiftNotification();
+              // além disso, cancelar notificações por id 1000
+              await PushService.cancelNotification(1000);
+            }
         } catch (_) {}
       }
     } catch (error) {
@@ -588,43 +638,6 @@ class _TimecardScreenState extends State<TimecardScreen> {
         final open = entradaCount - saidaCount;
         if (open <= 0) return false;
         return lastType != 'saida';
-    }
-  }
-
-  String _disabledReason(TimeRecordType type) {
-    final stats = _todayStats();
-    final lastType = stats['lastType'] as String?;
-    final entradaCount = stats['entradaCount'] as int;
-    final pausaCount = stats['pausaCount'] as int;
-    final retornoCount = stats['retornoCount'] as int;
-    final saidaCount = stats['saidaCount'] as int;
-
-    const int maxPerDay = 8;
-
-    if (_isRecording) return 'Já está registrando...';
-
-    switch (type) {
-      case TimeRecordType.entrada:
-        if (entradaCount >= maxPerDay) return 'Máximo de $maxPerDay entradas por dia atingido';
-        if (lastType == null) return 'Registrar entrada';
-        if (lastType == 'saida') return 'Registrar nova entrada';
-        return 'Finalize a jornada atual (saída) antes de registrar nova entrada';
-      case TimeRecordType.pausa:
-        if (pausaCount >= maxPerDay) return 'Máximo de $maxPerDay pausas por dia atingido';
-        final openJornadas = entradaCount - saidaCount;
-        if (openJornadas <= 0) return 'Registre a entrada primeiro';
-        if (lastType == 'pausa') return 'Pausa já registrada (retorne antes de pausar novamente)';
-        return 'Registrar pausa';
-      case TimeRecordType.retorno:
-        if (retornoCount >= maxPerDay) return 'Máximo de $maxPerDay retornos por dia atingido';
-        if (lastType != 'pausa') return 'Nenhuma pausa registrada para retornar';
-        return 'Registrar retorno';
-      case TimeRecordType.saida:
-        if (saidaCount >= maxPerDay) return 'Máximo de $maxPerDay saídas por dia atingido';
-        final open = entradaCount - saidaCount;
-        if (open <= 0) return 'Registre a entrada primeiro';
-        if (lastType == 'saida') return 'Saída já registrada';
-        return 'Registrar saída';
     }
   }
 
