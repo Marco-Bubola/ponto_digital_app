@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -18,6 +19,54 @@ class TimecardScreen extends StatefulWidget {
 }
 
 class _TimecardScreenState extends State<TimecardScreen> {
+
+  /// Calcula o tempo total trabalhado e total de pausas do dia, considerando múltiplos ciclos e o estado atual.
+  Map<String, Duration> _getWorkAndPauseDurationsToday() {
+    final records = _recordsToday();
+    Duration totalWork = Duration.zero;
+    Duration totalPause = Duration.zero;
+    DateTime? lastTimestamp;
+    String? lastType;
+    bool jornadaFinalizada = false;
+    for (final r in records) {
+      final type = (r['type'] ?? r['entry'] ?? r['event'] ?? '').toString().toLowerCase();
+      final tsRaw = r['timestamp'] ?? r['createdAt'] ?? r['time'] ?? '';
+      DateTime? ts;
+      try { ts = DateTime.parse(tsRaw.toString()).toLocal(); } catch (_) {}
+      if (ts == null) continue;
+      if (lastTimestamp != null && lastType != null && !jornadaFinalizada) {
+        final diff = ts.difference(lastTimestamp);
+        if (lastType.contains('entrada') || lastType.contains('retorno')) {
+          totalWork += diff;
+        } else if (lastType.contains('pausa')) {
+          totalPause += diff;
+        }
+      }
+      lastTimestamp = ts;
+      if (type.contains('entrada')) {
+        lastType = 'entrada';
+      } else if (type.contains('pausa')) {
+        lastType = 'pausa';
+      } else if (type.contains('retorno')) {
+        lastType = 'retorno';
+      } else if (type.contains('saida')) {
+        lastType = 'saida';
+        jornadaFinalizada = true;
+      }
+    }
+    // Após o último registro, só soma até agora se a jornada NÃO foi finalizada
+    if (lastTimestamp != null && lastType != null && !jornadaFinalizada) {
+      final now = DateTime.now();
+      final diff = now.difference(lastTimestamp);
+      if (lastType.contains('entrada') || lastType.contains('retorno')) {
+        totalWork += diff;
+      } else if (lastType.contains('pausa')) {
+        totalPause += diff;
+      }
+    }
+    return {'work': totalWork, 'pause': totalPause};
+  }
+
   TimeRecordType? _currentAction;
   bool _isRecording = false;
   bool _deviceAuthLimitReached = false;
@@ -25,9 +74,6 @@ class _TimecardScreenState extends State<TimecardScreen> {
   String _currentLocation = 'Carregando localização...';
   String? _debugDeviceId;
   // Estado local para notificação de jornada
-  DateTime? _localShiftStart;
-  Duration _localPauseAccumulated = Duration.zero;
-  DateTime? _localOngoingPauseStart;
   // Dados reais do usuário (fallbacks)
   String _lastRecordTitle = 'Nenhum registro';
   String _lastRecordStatus = 'Pendente';
@@ -103,8 +149,27 @@ class _TimecardScreenState extends State<TimecardScreen> {
         final now = DateTime.now();
         _currentTime = DateFormat('HH:mm:ss', 'pt_BR').format(now);
       });
+      // Atualiza notificação persistente a cada segundo para refletir o tempo real
+      _updatePersistentNotification();
       Future.delayed(const Duration(seconds: 1), _updateTime);
     }
+  }
+
+  Future<void> _updatePersistentNotification() async {
+    // Só atualiza se houver jornada aberta (último registro não for saída)
+    final stats = _todayStats();
+    final lastType = stats['lastType'] as String?;
+    if (lastType == null || lastType == 'saida') {
+      await PushService.stopShiftNotification();
+      await PushService.cancelNotification(1000);
+      return;
+    }
+    final durations = _getWorkAndPauseDurationsToday();
+    await PushService.startShiftNotification(
+      workedTotal: durations['work'] ?? Duration.zero,
+      pauseTotal: durations['pause'] ?? Duration.zero,
+      shiftDuration: const Duration(hours: 8),
+    );
   }
 
   void _getCurrentLocation() {
@@ -343,15 +408,12 @@ class _TimecardScreenState extends State<TimecardScreen> {
       } catch (_) {
         parsedBody = null;
       }
-      DateTime? serverTimestamp;
       if (parsedBody != null) {
         final tsRaw = parsedBody['timestamp'] ?? parsedBody['createdAt'] ?? parsedBody['time'] ?? parsedBody['recordedAt'];
         if (tsRaw != null) {
           try {
-            serverTimestamp = DateTime.parse(tsRaw.toString()).toLocal();
-          } catch (_) {
-            serverTimestamp = null;
-          }
+            // serverTimestamp removido pois não era utilizado
+          } catch (_) {}
         }
       }
 
@@ -396,39 +458,18 @@ class _TimecardScreenState extends State<TimecardScreen> {
           await svc.addLocalFromPayload(title: _getTypeDisplayName(type), body: text);
           // atualizar notificação persistente (usando id 1000)
             // Integrar com a notificação de jornada persistente
-            if (type == TimeRecordType.entrada) {
-              // iniciar jornada local e notificação (prefer server timestamp)
-              _localShiftStart = serverTimestamp ?? DateTime.now();
-              _localPauseAccumulated = Duration.zero;
-              _localOngoingPauseStart = null;
-              await PushService.startShiftNotification(start: _localShiftStart!, pauseTotal: _localPauseAccumulated);
-            } else if (type == TimeRecordType.pausa) {
-              // iniciar pausa local e atualizar notificação com ongoingPauseStart (prefer server timestamp)
-              _localOngoingPauseStart = serverTimestamp ?? DateTime.now();
-              await PushService.startShiftNotification(start: _localShiftStart ?? (serverTimestamp ?? DateTime.now()), pauseTotal: _localPauseAccumulated, ongoingPauseStart: _localOngoingPauseStart);
-            } else if (type == TimeRecordType.retorno) {
-              // acumular pausa e continuar - se houver serverTimestamp, use ele para calcular a pausa
-              if (_localOngoingPauseStart != null) {
-                final nowOrServer = serverTimestamp ?? DateTime.now();
-                try {
-                  final delta = nowOrServer.difference(_localOngoingPauseStart!);
-                  if (delta.isNegative == false) {
-                    _localPauseAccumulated += delta;
-                  }
-                } catch (_) {}
-                _localOngoingPauseStart = null;
-              }
-              if (_localShiftStart != null) {
-                await PushService.startShiftNotification(start: _localShiftStart!, pauseTotal: _localPauseAccumulated);
-              }
-            } else if (type == TimeRecordType.saida) {
-              // encerrar jornada e remover notificação
-              _localOngoingPauseStart = null;
-              _localShiftStart = null;
-              _localPauseAccumulated = Duration.zero;
+            // Sempre que registrar um ponto, atualiza a notificação com o total do dia
+            final durations = _getWorkAndPauseDurationsToday();
+            // Encontrar o horário da primeira entrada do dia
+            if (type == TimeRecordType.saida) {
               await PushService.stopShiftNotification();
-              // além disso, cancelar notificações por id 1000
               await PushService.cancelNotification(1000);
+            } else {
+              await PushService.startShiftNotification(
+                workedTotal: durations['work'] ?? Duration.zero,
+                pauseTotal: durations['pause'] ?? Duration.zero,
+                shiftDuration: const Duration(hours: 8),
+              );
             }
         } catch (_) {}
       }
@@ -692,6 +733,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                   ),
                 // ...existing code...
                 
+                // Card de totais do dia (trabalho e pausas) — MOVIDO para baixo dos botões
                 // Header moderno (título à esquerda, horário atual à direita na mesma linha)
                 Container(
                   width: double.infinity,
@@ -967,6 +1009,7 @@ class _TimecardScreenState extends State<TimecardScreen> {
                 ),
                 const SizedBox(height: 20),
 
+
                 
                 
                 // Botões de ação modernos em linha única com validações de fluxo
@@ -992,6 +1035,51 @@ class _TimecardScreenState extends State<TimecardScreen> {
                             ),
                           ))
                       .toList(),
+                ),
+                const SizedBox(height: 20),
+                // Card de totais do dia (trabalho e pausas) — sempre visível logo após os botões
+                // Card de totais do dia (trabalho e pausas) — sempre visível, mesmo zerado
+                Builder(
+                  builder: (context) {
+                    final durations = _getWorkAndPauseDurationsToday();
+                    String fmt(Duration d) => "${d.inHours.toString().padLeft(2, '0')}:${(d.inMinutes % 60).toString().padLeft(2, '0')}:${(d.inSeconds % 60).toString().padLeft(2, '0')}";
+                    return Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: theme.cardColor,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          Column(
+                            children: [
+                              const Text('Trabalho', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                              const SizedBox(height: 4),
+                              Text(fmt(durations['work'] ?? Duration.zero), style: TextStyle(fontSize: 18, color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                          Container(width: 1, height: 32, color: theme.dividerColor.withValues(alpha: 0.2)),
+                          Column(
+                            children: [
+                              const Text('Pausas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                              const SizedBox(height: 4),
+                              Text(fmt(durations['pause'] ?? Duration.zero), style: TextStyle(fontSize: 18, color: theme.colorScheme.secondary, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 20),
 
