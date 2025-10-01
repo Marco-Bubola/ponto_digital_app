@@ -5,6 +5,7 @@ import '../dashboard/dashboard_screen.dart';
 import 'register_screen.dart';
 import '../../utils/constants.dart';
 import '../../services/session_service.dart';
+import '../../services/auth_flag_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -58,6 +59,8 @@ class _LoginScreenState extends State<LoginScreen> {
         if (token != null) await SessionService.saveToken(token);
         if (user != null) await SessionService.saveUser(user);
 
+        // Marca que o usuário já logou pelo menos uma vez
+        await AuthFlagService.setLoggedInOnce();
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const DashboardScreen()),
