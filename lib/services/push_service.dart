@@ -45,72 +45,34 @@ Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
 class PushService {
   // --- Ongoing shift notification state (Android) ---
   static Timer? _progressTimer;
-  static DateTime? _shiftStart;
-  static Duration _pauseDuration = Duration.zero;
-  static DateTime? _ongoingPauseStart;
   static Duration _shiftDuration = Duration(hours: 8);
   static const int _shiftNotificationId = 1111;
 
   /// Inicia a notificação contínua de jornada e atualiza a cada [tickInterval].
   /// [start] é a data/hora de entrada. [pauseTotal] é a duração acumulada de pausas.
   /// [shiftDuration] é a duração prevista da jornada usada para calcular a barra de progresso.
+  /// Exibe notificação persistente com os valores já calculados de trabalho e pausa.
   static Future<void> startShiftNotification({
-    required DateTime start,
-    Duration pauseTotal = Duration.zero,
+    required Duration workedTotal,
+    required Duration pauseTotal,
     Duration? shiftDuration,
-    // se uma pausa já estiver em andamento, passe o instante de início aqui
-    DateTime? ongoingPauseStart,
     Duration tickInterval = const Duration(seconds: 1),
   }) async {
-    _shiftStart = start;
-    _pauseDuration = pauseTotal;
-    _ongoingPauseStart = ongoingPauseStart;
-    if (shiftDuration != null) _shiftDuration = shiftDuration;
-
+    _shiftDuration = shiftDuration ?? const Duration(hours: 8);
+    // Salva os valores para atualização periódica (se quiser animar, mas aqui só mostra o valor fixo)
+    _progressTimer?.cancel();
     // garante que o canal existe (Android)
     await _local.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_channel);
-
-    _progressTimer?.cancel();
-    _progressTimer = Timer.periodic(tickInterval, (_) => _updateShiftNotification());
-    // primeira atualização imediata
-    await _updateShiftNotification();
+    // Mostra notificação imediatamente com os valores recebidos
+    await _showFixedShiftNotification(workedTotal, pauseTotal);
   }
 
-  /// Para a atualização da notificação de jornada e remove a notificação.
-  static Future<void> stopShiftNotification() async {
-    _progressTimer?.cancel();
-    _progressTimer = null;
-    _shiftStart = null;
-    _pauseDuration = Duration.zero;
-    _ongoingPauseStart = null;
-    await _local.cancel(_shiftNotificationId);
-  }
-
-  static String _formatDuration(Duration d) {
-    final h = d.inHours.remainder(100).toString().padLeft(2, '0');
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$h:$m:$s';
-  }
-
-  static Future<void> _updateShiftNotification() async {
-    if (_shiftStart == null) return;
-    final now = DateTime.now();
-    // se há uma pausa em andamento, inclua sua duração transitória
-    Duration effectivePause = _pauseDuration;
-    if (_ongoingPauseStart != null) {
-      final ongoing = now.difference(_ongoingPauseStart!);
-      if (ongoing.isNegative == false) effectivePause += ongoing;
-    }
-    Duration worked = now.difference(_shiftStart!) - effectivePause;
-    if (worked.isNegative) worked = Duration.zero;
+  static Future<void> _showFixedShiftNotification(Duration worked, Duration pause) async {
     final totalSeconds = _shiftDuration.inSeconds;
     final workedSeconds = worked.inSeconds.clamp(0, totalSeconds);
-
     final title = 'Jornada em andamento';
-    final body = 'Trabalhado: ${_formatDuration(worked)} • Pausa: ${_formatDuration(_pauseDuration)}';
-
+    final body = 'Trabalhado: ${_formatDuration(worked)} • Pausa: ${_formatDuration(pause)}';
     final androidDetails = AndroidNotificationDetails(
       _channel.id,
       _channel.name,
@@ -122,14 +84,27 @@ class PushService {
       showProgress: true,
       maxProgress: totalSeconds,
       progress: workedSeconds,
-      // mostra uma notificação persistente
       autoCancel: false,
     );
     const iosDetails = DarwinNotificationDetails();
     final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
-
     await _local.show(_shiftNotificationId, title, body, details);
   }
+
+  /// Para a atualização da notificação de jornada e remove a notificação.
+  static Future<void> stopShiftNotification() async {
+  _progressTimer?.cancel();
+  _progressTimer = null;
+  await _local.cancel(_shiftNotificationId);
+  }
+
+  static String _formatDuration(Duration d) {
+    final h = d.inHours.remainder(100).toString().padLeft(2, '0');
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
 
   static Future<void> init() async {
     // Assumimos que Firebase já foi inicializado em main().
